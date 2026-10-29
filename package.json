@@ -1,0 +1,124 @@
+{
+  "name": "bidmail",
+  "productName": "BidMail",
+  "version": "1.1.0",
+  "description": "Email client and bid-invitation tracker for construction estimators",
+  "main": "out/main/index.js",
+  "author": "BidMail",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node tests/build.mjs && node --test --test-timeout=120000 --test-force-exit \"tests/dist/*.test.cjs\"",
+    "test:ui": "esbuild tests/ui-smoke.ts --bundle --platform=node --format=cjs --packages=external --outfile=tests/dist/ui/ui-smoke.cjs --log-level=warning && node tests/dist/ui/ui-smoke.cjs",
+    "server:build": "esbuild server/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=server/dist/bidmail-server.js --log-level=warning",
+    "server": "npm run server:build && node server/dist/bidmail-server.js",
+    "dist": "electron-vite build && electron-builder --win --x64",
+    "dist:mac": "electron-vite build && electron-builder --mac --arm64 --x64",
+    "test:update": "esbuild tests/update-smoke.ts --bundle --platform=node --format=cjs --packages=external --outfile=tests/dist/ui/update-smoke.cjs --log-level=warning && node tests/dist/ui/update-smoke.cjs"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.17",
+    "electron-updater": "^6.8.11",
+    "imapflow": "^2.9.1",
+    "mailparser": "^3.13.0",
+    "nodemailer": "^10.3.0",
+    "selfsigned": "^5.5.0"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.9.0",
+    "@types/node": "^26.6.6",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "esbuild": "^0.28.2",
+    "hoodiecrow-imap": "^3.3.1",
+    "playwright-core": "^1.64.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "smtp-server": "^3.21.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  },
+  "build": {
+    "appId": "com.bidmail.app",
+    "productName": "BidMail",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BidMail",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.business",
+      "icon": "build/icon.png",
+      "identity": null,
+      "hardenedRuntime": false,
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+      "extendInfo": {
+        "NSHumanReadableCopyright": "BidMail"
+      }
+    },
+    "afterPack": "build/afterPack.cjs",
+    "dmg": {
+      "title": "BidMail ${version}",
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://updates.invalid/bidmail"
+      }
+    ]
+  },
+  "allowScripts": {
+    "electron@45.1.0": true,
+    "esbuild@0.28.2": true
+  }
+}

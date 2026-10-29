@@ -1,0 +1,42 @@
+# Builds the Mac (Apple Silicon + Intel) and Windows apps in the cloud.
+# Run it from the repository's Actions tab ("Run workflow"), or by pushing a tag like v1.0.1.
+# The finished installers are attached to the run under "Artifacts".
+name: Build BidMail
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: dist:mac
+            files: |
+              release/*.dmg
+              release/*.zip
+          - os: windows-latest
+            script: dist
+            files: release/*.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run ${{ matrix.script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BidMail-${{ runner.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error

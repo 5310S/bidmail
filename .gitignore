@@ -1,0 +1,8 @@
+node_modules/
+out/
+release/
+server/dist/
+tests/dist/
+tests/screens/
+*.log
+.DS_Store
