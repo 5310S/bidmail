@@ -5,6 +5,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { _electron as electron } from 'playwright-core'
 import { BidStore } from '../src/shared/store'
+import { seedLeopard, startMockLeopard } from './mockLeopard'
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const hoodiecrow = require('hoodiecrow-imap')
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -59,8 +60,12 @@ async function main() {
   await new Promise<void>((r) => imap2.listen(22144, '127.0.0.1', () => r()))
   const smtp = await new Promise<any>((r) => { const s = startSMTPServer(22587, imap, () => r(s)) })
 
+  // Leopard (takeoff software): an account with the same email as the mail account, one project with a takeoff.
+  const leo = await startMockLeopard()
+  seedLeopard(leo, 'estimator@test.local', 'leopard-pass')
+
   const data = fs.mkdtempSync(path.join(os.tmpdir(), 'bidmail-ui-'))
-  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ userName: 'Kei Estimator', companyName: 'Ashlar Contracting', reading: { fontSize: 16, theme: 'light' } }))
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ userName: 'Kei Estimator', companyName: 'Ashlar Contracting', reading: { fontSize: 16, theme: 'light' }, leopard: { url: leo.url, email: '', cookie: '' } }))
   fs.writeFileSync(path.join(data, 'accounts.json'), JSON.stringify([{
     id: 'acct1', displayName: 'Kei Estimator', email: 'estimator@test.local', signature: '<p>Kei Estimator<br>Ashlar Contracting</p>', color: '#2f6fdb',
     imap: { host: '127.0.0.1', port: 22143, secure: false, user: 'estimator' }, smtp: { host: '127.0.0.1', port: 22587, secure: false, user: 'estimator' },
@@ -391,7 +396,48 @@ async function main() {
   if (!(await myTakeoff.count())) throw new Error('takeoff missing from My tasks')
   await shot('31-my-tasks')
 
+  // ---- Leopard: sign in with the same email, link the job, import the takeoff, quantities in the RFB email ----
+  await page.locator('.side-item', { hasText: 'Settings' }).click()
+  await page.locator('.tabs button', { hasText: 'Leopard' }).click()
+  await page.waitForSelector('text=The same email')
+  await page.locator('input[type="password"]').fill('leopard-pass')
+  await page.locator('button', { hasText: 'Sign in to Leopard' }).click()
+  await page.waitForSelector('text=Signed in to Leopard as')
+  await shot('32-leopard-settings')
+
+  await page.locator('.side-job', { hasText: 'Riverside' }).click()
+  await page.waitForSelector('.fact.leopard')
+  await page.locator('.fact.leopard button', { hasText: 'Link project' }).click()
+  await page.waitForSelector('.lp-projects button.best')
+  await shot('33-leopard-link')
+  await page.locator('.lp-projects button.best').click()
+  await page.waitForSelector('.lp-pkg', { timeout: 20000 })
+  await shot('34-leopard-import')
+  await page.locator('.modal-foot button', { hasText: /Create .* trade/ }).click()
+  await page.waitForSelector('text=with their takeoff quantities')
+  const afterImport = (await jobCall('getJob', [job.id])) as any
+  const concrete = afterImport.trades.find((t: any) => t.name === 'Concrete')
+  const elec = afterImport.trades.find((t: any) => t.name === 'Electrical')
+  if (!concrete || concrete.takeoffLines.length !== 2) throw new Error('Concrete trade not created from the takeoff')
+  if (elec.takeoffLines.length !== 2 || elec.bidders.length !== 3) throw new Error('Electrical not updated in place')
+  if (!afterImport.files.some((f: any) => f.name.startsWith('Leopard takeoff - '))) throw new Error('takeoff copy not saved with the job')
+  if (![...leo.users.get('estimator@test.local')!.jobs.get('job-riverside')!.files.keys()].some((k) => k.startsWith('bidmail-takeoff-'))) throw new Error('takeoff copy not saved in Leopard storage')
+  console.log('leopard ok: linked, takeoff imported, trades set up, copies saved in BidMail and Leopard')
+  await page.locator('.modal-foot button', { hasText: 'Send request for bids' }).click()
+  await page.waitForSelector('.bulk-modal')
+  await page.locator('.bulk-quick .chip', { hasText: 'Everyone' }).click()
+  await page.locator('button', { hasText: 'Add takeoff quantities to the message' }).click()
+  await page.locator('.seg button', { hasText: 'Preview' }).click()
+  await page.locator('.seg select').selectOption({ label: 'ABC Electric (Electrical)' })
+  await page.waitForSelector('.preview-body:has-text("Duplex receptacles: 146 EA")')
+  await shot('35-rfb-quantities')
+  await page.locator('.modal-foot button', { hasText: 'Cancel' }).click()
+  await page.locator('.tabs button', { hasText: 'Takeoff Quantities' }).click()
+  await page.waitForSelector('.qty-card')
+  await shot('36-takeoff-quantities')
+
   await app.close()
+  await leo.close()
   await new Promise((r) => smtp.close(r))
   await new Promise((r) => imap.close(r))
   await new Promise((r) => imap2.close(r))

@@ -2,10 +2,11 @@
 // activity log, team users and change log). Used directly by the desktop app in local/host mode and by
 // the team server in shared mode. Older databases are upgraded in place on open.
 import { DatabaseSync } from 'node:sqlite'
+import { matchTrade } from './takeoffAnalysis'
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
 import {
   ADDENDUM_TEMPLATE, Activity, Addendum, AuditEntry, Bidder, BidderAction, BidderActionInput, Company, CompanyWithStats,
-  DEFAULT_TEMPLATES, DEFAULT_WORKFLOW, EMPTY_TAKEOFF, EmailMatch, FileMeta, Job, JobDetail, JobSummary, Milestone, StepMark, Takeoff,
+  DEFAULT_TEMPLATES, DEFAULT_WORKFLOW, EMPTY_TAKEOFF, EmailMatch, FileMeta, Job, JobDetail, JobSummary, LeopardLink, Milestone, StepMark, Takeoff, TradeTakeoffLine,
   TeamUser, Template, TodaySummary, TodayTask, Trade, TradeWithBidders, WorkflowConfig, effectiveTradeStatus
 } from './types'
 
@@ -104,7 +105,9 @@ const MIGRATIONS: [string, string, string][] = [
   ['companies', 'license', "TEXT DEFAULT ''"],
   ['companies', 'prequalified', 'INTEGER DEFAULT 0'],
   ['jobs', 'takeoff', "TEXT DEFAULT '{}'"],
-  ['bidders', 'steps_json', "TEXT DEFAULT '{}'"]
+  ['bidders', 'steps_json', "TEXT DEFAULT '{}'"],
+  ['jobs', 'leopard', 'TEXT'],
+  ['trades', 'takeoff_lines', "TEXT DEFAULT '[]'"]
 ]
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024
@@ -140,6 +143,7 @@ function toJob(r: Row): Job {
     folderPath: r.folder_path ?? '', notes: r.notes ?? '', status: r.status ?? 'bidding',
     alternates: json(r.alternates, []),
     takeoff: { ...EMPTY_TAKEOFF, ...json<Partial<Takeoff>>(r.takeoff, {}) },
+    leopard: json<LeopardLink | null>(r.leopard, null),
     createdAt: r.created_at, updatedAt: r.updated_at, updatedBy: r.updated_by ?? ''
   }
 }
@@ -148,6 +152,7 @@ function toTrade(r: Row): Trade {
     id: r.id, jobId: r.job_id, name: r.name, csiCode: r.csi_code ?? '', status: r.status ?? 'auto',
     notes: r.notes ?? '', sortOrder: Number(r.sort_order ?? 0), drawingsLink: r.drawings_link ?? '',
     specsLink: r.specs_link ?? '', scopeNote: r.scope_note ?? '', scopeItems: json(r.scope_items, []),
+    takeoffLines: json(r.takeoff_lines, []),
     createdAt: r.created_at, updatedAt: r.updated_at
   }
 }
@@ -252,7 +257,8 @@ export const STORE_METHODS = [
   'listTemplates', 'saveTemplate', 'deleteTemplate', 'emailIndex', 'exportJobCsv',
   'addAddendum', 'updateAddendum', 'deleteAddendum', 'markAddendumSent', 'setAddendumAck',
   'addFile', 'listFiles', 'getFile', 'deleteFile', 'todaySummary', 'listAudit',
-  'getWorkflow', 'saveWorkflow', 'addMilestone', 'updateMilestone', 'deleteMilestone', 'applyMilestoneTemplate', 'setTakeoff', 'setBidderStep'
+  'getWorkflow', 'saveWorkflow', 'addMilestone', 'updateMilestone', 'deleteMilestone', 'applyMilestoneTemplate', 'setTakeoff', 'setBidderStep',
+  'linkLeopard', 'applyTakeoffPackages'
 ] as const
 export type StoreMethod = (typeof STORE_METHODS)[number]
 
@@ -863,6 +869,63 @@ export class BidStore {
     return next
   }
 
+  // ---------- Leopard (takeoff software) ----------
+  /** Links (or unlinks, with null) a job to a Leopard project. */
+  linkLeopard(jobId: string, link: Partial<LeopardLink> | null, userName = ''): Job | null {
+    const r = this.get('SELECT leopard FROM jobs WHERE id = ?', jobId)
+    if (!r) throw new Error('Job not found')
+    const cur = json<LeopardLink | null>(r.leopard, null)
+    const next: LeopardLink | null = link
+      ? {
+          projectId: String(link.projectId ?? cur?.projectId ?? ''),
+          projectName: link.projectName ?? cur?.projectName ?? '',
+          url: link.url ?? cur?.url ?? '',
+          linkedBy: link.projectId && link.projectId !== cur?.projectId ? userName : cur?.linkedBy ?? userName,
+          linkedAt: link.projectId && link.projectId !== cur?.projectId ? now() : cur?.linkedAt ?? now(),
+          takeoffImportedAt: link.takeoffImportedAt !== undefined ? link.takeoffImportedAt : cur?.takeoffImportedAt ?? null,
+          takeoffImportedBy: link.takeoffImportedAt ? userName : cur?.takeoffImportedBy ?? '',
+          takeoffPath: link.takeoffPath !== undefined ? link.takeoffPath : cur?.takeoffPath ?? null,
+          itemCount: link.itemCount ?? cur?.itemCount ?? 0
+        }
+      : null
+    if (next && !next.projectId) throw new Error('Choose a Leopard project')
+    this.run('UPDATE jobs SET leopard = ?, updated_at = ?, updated_by = ? WHERE id = ?', next ? JSON.stringify(next) : null, now(), userName, jobId)
+    this.bump()
+    const j = this.get('SELECT * FROM jobs WHERE id = ?', jobId)
+    return j ? toJob(j) : null
+  }
+
+  /**
+   * Applies an analyzed takeoff: creates trades that don't exist yet and stores each trade's quantities
+   * (used by {{takeoff_quantities}} in request-for-bid emails). Trades are matched by name, then CSI code.
+   */
+  applyTakeoffPackages(jobId: string, packages: { tradeName: string; csiCode: string; lines: TradeTakeoffLine[] }[], userName = '') {
+    if (!this.get('SELECT id FROM jobs WHERE id = ?', jobId)) throw new Error('Job not found')
+    const ts = now()
+    let created = 0
+    let updated = 0
+    this.tx(() => {
+      const trades = this.all('SELECT id, name, csi_code FROM trades WHERE job_id = ?', jobId)
+      let order = Number(this.get('SELECT COALESCE(MAX(sort_order), 0) AS m FROM trades WHERE job_id = ?', jobId)?.m ?? 0)
+      for (const p of packages) {
+        const lines = JSON.stringify(p.lines ?? [])
+        const match = matchTrade(p, trades.map((t) => ({ id: String(t.id), name: String(t.name), csiCode: String(t.csi_code ?? '') })))
+        if (match) {
+          this.run('UPDATE trades SET takeoff_lines = ?, updated_at = ? WHERE id = ?', lines, ts, match.id)
+          updated++
+        } else {
+          this.run(
+            'INSERT INTO trades(id, job_id, name, csi_code, status, notes, sort_order, takeoff_lines, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+            randomUUID(), jobId, p.tradeName, p.csiCode ?? '', 'auto', '', ++order, lines, ts, ts
+          )
+          created++
+        }
+      }
+    })
+    this.bump()
+    return { created, updated }
+  }
+
   // ---------- custom workflow steps on a company ----------
   /** Ticks (or unticks) a custom step, or "Quote filed", on one company, recording who and when. */
   setBidderStep(bidderId: string, stepId: string, done: boolean, at?: string, userName = ''): Bidder {
@@ -1246,6 +1309,8 @@ export class BidStore {
         const parts = [p.assignee !== undefined && `assigned to ${p.assignee || 'nobody'}`, p.status && `status ${p.status.replace('_', ' ')}`, p.dueAt !== undefined && 'due date', p.notes !== undefined && 'notes'].filter(Boolean)
         return { summary: `Takeoff: ${parts.join(', ')}`, jobId: a[0] }
       }
+      case 'linkLeopard': return { summary: a[1] ? `Linked to Leopard project "${a[1].projectName ?? a[1].projectId}"` + (a[1].takeoffImportedAt ? ' and imported the takeoff' : '') : 'Unlinked the Leopard project', jobId: a[0] }
+      case 'applyTakeoffPackages': return { summary: `Set up ${(a[1] ?? []).length} trade(s) from the Leopard takeoff`, jobId: a[0] }
       case 'setBidderStep': {
         const b = bidder(a[0])
         const step = this.getWorkflow().steps.find((s) => s.id === a[1])?.name ?? a[1]
@@ -1276,6 +1341,8 @@ export class BidStore {
       case 'applyMilestoneTemplate': result = this.applyMilestoneTemplate(a[0], userName); break
       case 'setTakeoff': result = this.setTakeoff(a[0], a[1] ?? {}, userName); break
       case 'setBidderStep': result = this.setBidderStep(a[0], a[1], !!a[2], a[3], userName); break
+      case 'linkLeopard': result = this.linkLeopard(a[0], a[1] ?? null, userName); break
+      case 'applyTakeoffPackages': result = this.applyTakeoffPackages(a[0], a[1] ?? [], userName); break
       case 'listAudit': result = this.listAudit(a[0] ?? null, a[1] ?? 300); break
       default: result = (this as any)[method](...a)
     }

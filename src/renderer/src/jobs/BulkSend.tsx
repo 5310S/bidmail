@@ -33,6 +33,7 @@ export function BulkSend({ detail, mode, tradeId, addendumId, onClose }: { detai
   const [bodyHtml, setBodyHtml] = useState('')
   const editor = useRef<RichEditorHandle>(null)
   const [editorKey, setEditorKey] = useState(0)
+  const [qtyAdded, setQtyAdded] = useState(false)
 
   const all = detail.trades.flatMap((t) => t.bidders.map((b) => ({ b, t })))
   const defaultSel = () => {
@@ -111,7 +112,17 @@ export function BulkSend({ detail, mode, tradeId, addendumId, onClose }: { detai
   }
 
   const insertField = (key: string) => editor.current?.insertHtml(`{{${key}}}`)
-
+  // Trades set up from a Leopard takeoff carry their quantities; offer to put them in the request for bids.
+  const selectedWithQty = detail.trades.filter((t) => t.takeoffLines?.length && t.bidders.some((b) => sel.has(b.id))).length
+  const hasQtyField = qtyAdded || /takeoff_quantities/.test(bodyHtml)
+  const addQuantities = () => {
+    const html = currentBody()
+    // Before the sign-off when there is one, else at the end.
+    const closing = /(<p>\s*(Thanks|Thank you|Regards|Best|Sincerely)[\s\S]*)$/i
+    setBodyHtml(closing.test(html) ? html.replace(closing, '<p>{{takeoff_quantities}}</p>$1') : html + '<p>{{takeoff_quantities}}</p>')
+    setEditorKey((k) => k + 1)
+    setQtyAdded(true)
+  }
   // ---------- progress screen ----------
   if (runId) {
     const items = [...sel].map((id) => ({ ...all.find((x) => x.b.id === id)!, p: progress[id] }))
@@ -297,6 +308,13 @@ export function BulkSend({ detail, mode, tradeId, addendumId, onClose }: { detai
               {attachments.length === 0 && <span className="muted small">Tip: send drawings as a link; large attachments often bounce.</span>}
             </div>
           </div>
+          {mode === 'invite' && selectedWithQty > 0 && !hasQtyField && tab === 'write' && (
+            <div className="ok-box">
+              <Icon name="grid" size={16} />
+              <span className="grow">{selectedWithQty} selected trade{selectedWithQty === 1 ? ' has' : 's have'} quantities from the Leopard takeoff.</span>
+              <button className="link-btn" onClick={addQuantities}>Add takeoff quantities to the message</button>
+            </div>
+          )}
           {warnings.map((w) => (
             <div key={w} className="warn-box"><Icon name="alert" size={16} /> {w}</div>
           ))}

@@ -18,9 +18,32 @@ export interface Job {
   alternates: JobAlternate[]
   /** One takeoff per job: who is doing it, how far along, and when it's due. */
   takeoff: Takeoff
+  /** The Leopard project this job is linked to (takeoff software), if any. */
+  leopard: LeopardLink | null
   createdAt: string
   updatedAt: string
   updatedBy: string
+}
+
+export interface LeopardLink {
+  projectId: string
+  projectName: string
+  url: string
+  linkedBy: string
+  linkedAt: string
+  /** Last takeoff import: when, by whom, and where the copy was saved in Leopard storage. */
+  takeoffImportedAt: string | null
+  takeoffImportedBy: string
+  takeoffPath: string | null
+  itemCount: number
+}
+
+/** One quantity from the takeoff, carried on its trade for request-for-bid emails. */
+export interface TradeTakeoffLine {
+  description: string
+  quantity: number | null
+  unit: string
+  sheet: string
 }
 
 export type TakeoffStatus = 'not_started' | 'in_progress' | 'done' | 'checked'
@@ -173,6 +196,8 @@ export interface Trade {
   scopeNote: string
   /** Scope checklist used for bid leveling. */
   scopeItems: string[]
+  /** Quantities from the Leopard takeoff for this trade ({{takeoff_quantities}}). */
+  takeoffLines: TradeTakeoffLine[]
   createdAt: string
   updatedAt: string
 }
@@ -530,6 +555,7 @@ export function fillTemplate(text: string, fields: Record<string, string>, html 
     const v = fields[key.toLowerCase()]
     const value = v && v.trim() ? v : (fallback ?? '').trim()
     if (!html) return value
+    if (key.toLowerCase() === 'takeoff_quantities') return escapeHtml(value).replace(/\n/g, '<br>')
     if (key.toLowerCase().endsWith('_link') && v && /^(https?:\/\/|www\.)/i.test(value)) {
       const safe = escapeHtml(value)
       const href = /^www\./i.test(value) ? 'https://' + safe : safe
@@ -561,6 +587,7 @@ export const MERGE_FIELDS: { key: string; label: string }[] = [
   { key: 'drawings_link', label: 'Drawings link' },
   { key: 'specs_link', label: 'Spec book link' },
   { key: 'trade_scope', label: 'Trade scope note' },
+  { key: 'takeoff_quantities', label: 'Takeoff quantities for the trade' },
   { key: 'addendum_number', label: 'Addendum number' },
   { key: 'addendum_title', label: 'Addendum title' },
   { key: 'addendum_link', label: 'Addendum link' },

@@ -57,6 +57,58 @@ export interface AppSettings {
   oauth: OAuthSettings
   reminders: ReminderSettings
   updates: UpdateSettings
+  leopard: LeopardSettings
+}
+
+/** This computer's Leopard sign-in (each person uses their own Leopard account). */
+export interface LeopardSettings {
+  url: string
+  /** The email used to sign in to Leopard (a mail account's address, or a separate one). */
+  email: string
+  /** Leopard's session cookie, encrypted on disk; shown to the screens only as "(signed in)". */
+  cookie: string
+}
+
+export interface LeopardStatus {
+  url: string
+  signedIn: boolean
+  email: string
+  usedBytes: number | null
+  quotaBytes: number | null
+  error: string
+}
+
+export interface LeopardProjectInfo {
+  id: string
+  name: string
+  number: string
+  location: string
+  changed: number | null
+  takeoffSaved: number | null
+  fileCount: number
+}
+
+export interface TakeoffPackagePreview {
+  tradeName: string
+  csiCode: string
+  lines: { description: string; quantity: number | null; unit: string; sheet: string }[]
+  totals: { unit: string; quantity: number }[]
+  /** The job's trade this package updates; null = a new trade gets created. */
+  existingTradeId: string | null
+  existingTradeName: string
+}
+
+export interface TakeoffAnalysisResult {
+  projectId: string
+  projectName: string
+  savedAt: number | null
+  itemCount: number
+  missingQuantities: number
+  packages: TakeoffPackagePreview[]
+  /** Where the copy was saved: BidMail job files, and the Leopard project's storage. */
+  bidmailFile: string | null
+  leopardFile: string | null
+  warnings: string[]
 }
 
 export interface TeamStatus {

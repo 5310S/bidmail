@@ -14,6 +14,7 @@ import { startReminders } from './reminders'
 import { Updater } from './updater'
 import { publishInstaller } from './updatesFeed'
 import { fetchCertificate } from './net'
+import { LeopardService } from './leopardService'
 import { AccountSaveInput, AppSettings, ComposeData, MailAccount, MessageSummary, PickedFile, TeamSettings } from '../shared/ipc'
 import type { MailRule } from '../shared/rules'
 
@@ -55,6 +56,7 @@ const dataFile = (name: string) => path.join(app.getPath('userData'), name)
 let snoozer: SnoozeService
 let rules: RulesRunner
 const updater = new Updater((s) => send('update:status', s))
+const leopard = new LeopardService(backend)
 
 /** The team server hosts updates for its teammates unless a different folder is set. */
 function configureUpdates() {
@@ -105,6 +107,15 @@ function registerIpc() {
   handle('bid:call', (method: string, args: any[]) => backend.call(method, args))
   handle('bid:status', () => backend.getStatus())
 
+  // Leopard (takeoff software)
+  handle('leopard:status', () => leopard.status())
+  handle('leopard:login', (url: string, email: string, password: string) => leopard.login(url, email, password))
+  handle('leopard:logout', () => leopard.logout())
+  handle('leopard:projects', () => leopard.projects())
+  handle('leopard:link', (jobId: string, projectId: string | null) => leopard.link(jobId, projectId))
+  handle('leopard:create', (jobId: string) => leopard.createProject(jobId))
+  handle('leopard:import', (jobId: string) => leopard.importTakeoff(jobId))
+  handle('leopard:open', () => shell.openExternal(leopard.openUrl()))
   // settings
   handle('settings:get', () => publicSettings())
   handle('settings:save', (patch: Partial<AppSettings>) => {

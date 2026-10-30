@@ -1,11 +1,11 @@
 // Typed wrappers over the preload bridge.
 import type {
   AccountSaveInput, AppSettings, BulkSendInput, ComposeData, MailAccount, MailFolder, MessageDetail, MessageList,
-  PickedFile, TeamSettings, TeamStatus
+  LeopardProjectInfo, LeopardStatus, PickedFile, TakeoffAnalysisResult, TeamSettings, TeamStatus
 } from '../../shared/ipc'
 import type {
   Activity, Addendum, AuditEntry, Bidder, BidderAction, BidderActionInput, Company, CompanyWithStats, EmailMatch, FileMeta, Job,
-  JobDetail, JobSummary, Milestone, Takeoff, TeamUser, Template, TodaySummary, Trade, WorkflowConfig
+  JobDetail, JobSummary, Milestone, Takeoff, TeamUser, Template, TodaySummary, Trade, TradeTakeoffLine, WorkflowConfig
 } from '../../shared/types'
 import type { MailRule } from '../../shared/rules'
 
@@ -59,7 +59,20 @@ export const bid = {
   deleteMilestone: (id: string) => call('deleteMilestone', id),
   applyMilestoneTemplate: (jobId: string) => call<Milestone[]>('applyMilestoneTemplate', jobId),
   setTakeoff: (jobId: string, patch: Partial<Takeoff>) => call<Takeoff>('setTakeoff', jobId, patch),
-  setBidderStep: (bidderId: string, stepId: string, done: boolean, at?: string) => call<Bidder>('setBidderStep', bidderId, stepId, done, at)
+  setBidderStep: (bidderId: string, stepId: string, done: boolean, at?: string) => call<Bidder>('setBidderStep', bidderId, stepId, done, at),
+  applyTakeoffPackages: (jobId: string, packages: { tradeName: string; csiCode: string; lines: TradeTakeoffLine[] }[]) =>
+    call<{ created: number; updated: number }>('applyTakeoffPackages', jobId, packages)
+}
+
+export const leopardApi = {
+  status: () => invoke<LeopardStatus>('leopard:status'),
+  login: (url: string, email: string, password: string) => invoke<LeopardStatus>('leopard:login', url, email, password),
+  logout: () => invoke<LeopardStatus>('leopard:logout'),
+  projects: () => invoke<LeopardProjectInfo[]>('leopard:projects'),
+  link: (jobId: string, projectId: string | null) => invoke<Job | null>('leopard:link', jobId, projectId),
+  create: (jobId: string) => invoke<Job | null>('leopard:create', jobId),
+  importTakeoff: (jobId: string) => invoke<TakeoffAnalysisResult>('leopard:import', jobId),
+  open: () => invoke('leopard:open')
 }
 
 export const files = {

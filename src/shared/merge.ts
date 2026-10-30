@@ -1,3 +1,4 @@
+import { quantitiesText } from './takeoffAnalysis'
 import { Addendum, Bidder, escapeHtml, Job, Trade } from './types'
 
 export function formatBidDue(iso: string | null): string {
@@ -33,6 +34,7 @@ export function mergeFields(job: Job, trade: Trade, bidder: Bidder, me: { name: 
     drawings_link: trade.drawingsLink || job.drawingsLink,
     specs_link: trade.specsLink || job.specsLink,
     trade_scope: trade.scopeNote ?? '',
+    takeoff_quantities: trade.takeoffLines?.length ? 'Quantities from our takeoff (for reference; please verify):\n' + quantitiesText(trade.takeoffLines) : '',
     addendum_number: addendum?.number ?? '',
     addendum_title: addendum?.title ?? '',
     addendum_link: addendum?.link ?? '',

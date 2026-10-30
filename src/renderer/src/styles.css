@@ -709,3 +709,40 @@ input.money { width: 130px; padding: 4px 8px; text-align: right; font-variant-nu
 .job-takeoff { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 .job-takeoff.tk-in_progress { color: var(--accent); }
 .job-takeoff.tk-done, .job-takeoff.tk-checked { color: var(--ok); }
+
+/* ---------- Leopard ---------- */
+.error-box { padding: 9px 12px; border-radius: 6px; margin-top: 10px; font-size: 13px; background: var(--err-bg); color: var(--err); }
+.radio-stack { display: flex; flex-direction: column; gap: 6px; }
+.plain-list { margin: 4px 0 0; padding-left: 18px; line-height: 1.6; }
+.storage-meter { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; max-width: 420px; }
+.storage-bar { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.storage-bar span { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.storage-bar span.full { background: var(--err); }
+.leopard-card h3 { display: flex; align-items: center; gap: 8px; }
+.fact.leopard { min-width: 220px; max-width: 300px; }
+.fact.leopard .lp-body { min-width: 0; flex: 1; }
+.fact.leopard .lp-actions { display: flex; gap: 6px; margin-top: 6px; align-items: center; }
+.fact.leopard.unlinked .fact-value { font-weight: 400; }
+.lp-projects { list-style: none; margin: 10px 0 0; padding: 0; max-height: 52vh; overflow: auto; }
+.lp-projects li button { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; background: var(--panel); color: inherit; cursor: pointer; }
+.lp-projects li button:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+.lp-projects li button.best { border-color: var(--accent); }
+.lp-projects .chip.sm, .lp-pkg .chip.sm { margin-left: 8px; font-size: 11.5px; padding: 1px 8px; cursor: default; }
+.search-box.wide { width: 100%; }
+.lp-summary { display: flex; gap: 18px; align-items: baseline; margin-bottom: 4px; }
+.lp-summary b { font-size: 18px; }
+.lp-packages { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
+.lp-pkg { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.lp-pkg.on { border-color: var(--accent); }
+.lp-pkg-head { display: flex; gap: 10px; align-items: center; padding: 8px 12px; cursor: pointer; }
+.chip.new { background: var(--ok-bg); color: var(--ok); }
+.qty-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.qty-table td { padding: 5px 12px; border-top: 1px solid var(--border); }
+.qty-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ok-box.big { font-size: 14px; padding: 14px 16px; }
+.takeoff-tab .qty-card { padding: 0; margin-bottom: 10px; overflow: hidden; }
+.takeoff-tab .qty-head { display: flex; gap: 12px; align-items: baseline; padding: 10px 14px; }
+.qty-table { table-layout: fixed; }
+.qty-table td:nth-child(2) { width: 110px; }
+.qty-table td:nth-child(3) { width: 56px; }
+.qty-table td:nth-child(4) { width: 28%; }

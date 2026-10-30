@@ -57,6 +57,21 @@ BidMail to Applications. It is not notarized by Apple yet: the first time, **rig
   saving a quote file.
 - **Today > My tasks**: takeoffs and milestones assigned to you (or everyone), with Done buttons.
 
+## Leopard takeoff (Settings > Leopard)
+
+BidMail connects to [Leopard](https://leopard.5310s.com), the team's web takeoff software, using your Leopard account.
+
+- **Sign in** under Settings > Leopard with the same email as one of your mail accounts, or a separate Leopard email, plus your Leopard password. BidMail keeps only Leopard's sign-in (encrypted on this computer, never your password). Each person signs in with their own Leopard account. The tab shows how much of the account's 10 GB storage is used.
+- **Link a job** to its Leopard project from the Leopard box in the job header. The closest match by name or job number is suggested, or *Create "job name" in Leopard* makes a new project from the job's name, number and location.
+- **Import takeoff** gets the project's saved takeoff and:
+  - saves a copy with the job's files (`Leopard takeoff - <date>.json` and a `quantities.csv`), shared with the team, and a summary in the Leopard project's storage (`bidmail-takeoff-<date>.json`);
+  - groups the items into trades, using each item's trade in Leopard, or its CSI code;
+  - lets you pick which trades to create or update. Takeoff trades are matched to the job's trades by name ("Drywall" goes to "Drywall & Framing") or CSI code, and each trade keeps its quantities;
+  - fills in the takeoff card: Leopard's estimator becomes who's doing the takeoff, and the status moves to In progress.
+- **Request-for-bid emails** can include each trade's quantities with `{{takeoff_quantities}}` (Insert field > Takeoff quantities, or the *Add takeoff quantities to the message* button in the send window). Each company gets only its own trade's list.
+- The **Takeoff Quantities** tab on a job lists the imported quantities by trade.
+
+Quantities come from Leopard's saved takeoff. Items without a quantity are listed without one and flagged in the import window.
 ## Email
 - Text size A-/A+, **Simple** view, pictures blocked until allowed, conversations (toggle **Conversations**).
 - Select several: Ctrl/Cmd+click, Shift+click, Ctrl/Cmd+A or checkboxes, then read/unread, flag, archive, move, delete.

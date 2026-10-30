@@ -5,6 +5,7 @@ import { TeamTab } from './TeamTab'
 import { AboutTab } from './AboutTab'
 import { RulesTab } from './RulesTab'
 import { WorkflowTab } from './WorkflowTab'
+import { LeopardTab } from './LeopardTab'
 import { useApp } from '../state'
 import { Icon } from '../components/Icon'
 import { Button, Field, Modal } from '../components/ui'
@@ -65,7 +66,7 @@ export function SettingsView({ tab: initialTab }: { tab?: string }) {
     <div className="page">
       <div className="page-head"><h1>Settings</h1></div>
       <div className="tabs">
-        {[['profile', 'Profile'], ['accounts', 'Email Accounts'], ['team', 'Team Sharing'], ['workflow', 'Bid Workflow'], ['rules', 'Mail Rules'], ['reading', 'Reading'], ['about', 'About & Updates']].map(([k, v]) => (
+        {[['profile', 'Profile'], ['accounts', 'Email Accounts'], ['team', 'Team Sharing'], ['workflow', 'Bid Workflow'], ['leopard', 'Leopard'], ['rules', 'Mail Rules'], ['reading', 'Reading'], ['about', 'About & Updates']].map(([k, v]) => (
           <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{v}</button>
         ))}
       </div>
@@ -75,6 +76,7 @@ export function SettingsView({ tab: initialTab }: { tab?: string }) {
         {tab === 'team' && <TeamTab />}
         {tab === 'rules' && <RulesTab />}
         {tab === 'workflow' && <WorkflowTab />}
+        {tab === 'leopard' && <LeopardTab />}
         {tab === 'reading' && <ReadingTab />}
         {tab === 'about' && <AboutTab />}
       </div>

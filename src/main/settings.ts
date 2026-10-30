@@ -6,6 +6,7 @@ import { readJson, writeJson } from './jsonFile'
 import { decryptSecret, encryptSecret } from './secrets'
 import { DEFAULT_OAUTH } from './mail/oauth'
 import { DEFAULT_REMINDERS } from './reminders'
+import { LEOPARD_DEFAULT_URL } from './leopard'
 
 const file = () => path.join(app.getPath('userData'), 'settings.json')
 
@@ -19,7 +20,8 @@ const DEFAULTS: AppSettings = {
   notifications: true,
   oauth: DEFAULT_OAUTH,
   reminders: DEFAULT_REMINDERS,
-  updates: { url: '', enabled: true }
+  updates: { url: '', enabled: true },
+  leopard: { url: LEOPARD_DEFAULT_URL, email: '', cookie: '' }
 }
 
 let cache: AppSettings | null = null
@@ -35,11 +37,13 @@ export function getSettings(): AppSettings {
     reading: { ...DEFAULTS.reading, ...(raw.reading ?? {}) },
     oauth: { ...DEFAULTS.oauth, ...(raw.oauth ?? {}) },
     reminders: { ...DEFAULTS.reminders, ...(raw.reminders ?? {}) },
-    updates: { ...DEFAULTS.updates, ...(raw.updates ?? {}) }
+    updates: { ...DEFAULTS.updates, ...(raw.updates ?? {}) },
+    leopard: { ...DEFAULTS.leopard, ...(raw.leopard ?? {}) }
   }
   s.team.key = decryptSecret(s.team.key)
   s.team.token = decryptSecret(s.team.token)
   s.oauth.googleClientSecret = decryptSecret(s.oauth.googleClientSecret)
+  s.leopard.cookie = decryptSecret(s.leopard.cookie)
   if (!s.userName) s.userName = os.userInfo().username
   cache = s
   return s
@@ -54,13 +58,16 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
     reading: { ...cur.reading, ...(patch.reading ?? {}) },
     oauth: { ...cur.oauth, ...(patch.oauth ?? {}) },
     reminders: { ...cur.reminders, ...(patch.reminders ?? {}) },
-    updates: { ...cur.updates, ...(patch.updates ?? {}) }
+    updates: { ...cur.updates, ...(patch.updates ?? {}) },
+    leopard: { ...cur.leopard, ...(patch.leopard ?? {}) }
   }
+  if (next.leopard.cookie === '(signed in)') next.leopard.cookie = cur.leopard.cookie
   cache = next
   writeJson(file(), {
     ...next,
     team: { ...next.team, key: encryptSecret(next.team.key), token: encryptSecret(next.team.token) },
-    oauth: { ...next.oauth, googleClientSecret: encryptSecret(next.oauth.googleClientSecret) }
+    oauth: { ...next.oauth, googleClientSecret: encryptSecret(next.oauth.googleClientSecret) },
+    leopard: { ...next.leopard, cookie: encryptSecret(next.leopard.cookie) }
   })
   return next
 }
@@ -68,5 +75,5 @@ export function saveSettings(patch: Partial<AppSettings>): AppSettings {
 /** Settings as shown to the screens: the session token never leaves the main process. */
 export function publicSettings(): AppSettings {
   const s = getSettings()
-  return { ...s, team: { ...s.team, token: s.team.token ? '(signed in)' : '' } }
+  return { ...s, team: { ...s.team, token: s.team.token ? '(signed in)' : '' }, leopard: { ...s.leopard, cookie: s.leopard.cookie ? '(signed in)' : '' } }
 }
