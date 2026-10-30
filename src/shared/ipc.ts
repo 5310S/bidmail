@@ -91,7 +91,7 @@ export interface LeopardProjectInfo {
 export interface TakeoffPackagePreview {
   tradeName: string
   csiCode: string
-  lines: { description: string; quantity: number | null; unit: string; sheet: string }[]
+  lines: { description: string; quantity: number | null; unit: string; sheet: string; itemId?: string }[]
   totals: { unit: string; quantity: number }[]
   /** The job's trade this package updates; null = a new trade gets created. */
   existingTradeId: string | null

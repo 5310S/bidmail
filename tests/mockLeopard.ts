@@ -13,27 +13,35 @@ export interface MockLeopard {
   requests: { method: string; path: string; origin?: string; cookie?: string }[]
 }
 
+// Scales are real feet per PDF point. Sheet 4 (E-201) has no scale yet; a detail region on sheet 1 has its own.
+const rect = (x: number, y: number, w: number, h: number) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
 export const SAMPLE_TAKEOFF = {
+  version: 1,
   info: { number: '24-117', location: 'Springfield', bidDate: '2026-11-20', estimator: 'Kei' },
   sheets: { 0: { name: 'A-101', folder: 'Architectural' }, 1: { name: 'A-102' }, 4: { name: 'E-201' } },
-  scales: {},
+  scales: { 0: { sx: 0.5, sy: 0.5, label: '1/8" = 1\'' }, 1: { sx: 0.5, sy: 0.5, label: '1/8" = 1\'' } },
+  regions: [{ id: 'r1', page: 1, name: 'Detail 3', rect: [300, 300, 400, 400], scale: { sx: 0.1, sy: 0.1, label: '1" = 1\'' } }],
   items: [
-    { id: 'i1', name: 'Slab on grade 4"', kind: 'area', trade: 'Concrete', csi: '03 30 00', unit: 'SF', quantity: 12450.5 },
-    { id: 'i2', name: 'Footings', kind: 'linear', csi: '033000', quantity: '1,180' },
-    { id: 'i3', name: 'Gyp board partitions', kind: 'linear', trade: 'Drywall', quantity: 2210 },
-    { id: 'i4', name: 'Duplex receptacles', kind: 'count', csi: '26 27 26', quantity: 146 },
-    { id: 'i5', name: 'Light fixtures type A', kind: 'count', csi: '26', quantity: 88 },
-    { id: 'i6', name: 'Misc. item', kind: 'count' }
+    { id: 'i1', name: 'Slab on grade 4"', kind: 'area', trade: 'Concrete', csi: '03 30 00', color: '#888', visible: true },
+    { id: 'i2', name: 'Footings', kind: 'linear', csi: '033000', quantity: '1,180', color: '#888', visible: true },
+    { id: 'i3', name: 'Gyp board partitions', kind: 'linear', trade: 'Drywall', height: 10, measure: 'wallArea', color: '#888', visible: true },
+    { id: 'i4', name: 'Duplex receptacles', kind: 'count', csi: '26 27 26', color: '#888', visible: true },
+    { id: 'i5', name: 'Light fixtures type A', kind: 'count', csi: '26', color: '#888', visible: true },
+    { id: 'i6', name: 'Misc. item', kind: 'count', color: '#888', visible: true },
+    { id: 'i7', name: 'Conduit', kind: 'linear', csi: '26 05 33', color: '#888', visible: true }
   ],
   sections: [
-    { itemId: 'i1', page: 0, points: [] },
-    { itemId: 'i1', page: 1, points: [] },
-    { itemId: 'i3', page: 1, points: [] },
-    { itemId: 'i4', page: 4, points: [] },
-    { itemId: 'i5', page: 4, points: [] }
+    // 100 x 50 ft with a 10 x 10 ft hole = 4,900 SF, plus 50 x 50 ft on A-102 = 7,400 SF
+    { id: 's1', itemId: 'i1', page: 0, points: rect(0, 0, 200, 100), holes: [rect(10, 10, 20, 20)] },
+    { id: 's2', itemId: 'i1', page: 1, points: rect(0, 0, 100, 100) },
+    // 75 ft of wall x 10 ft = 750 SF, plus 10 ft in the 1" detail = 100 SF
+    { id: 's3', itemId: 'i3', page: 1, points: [[0, 0], [100, 0], [100, 50]] },
+    { id: 's4', itemId: 'i3', page: 1, points: [[300, 300], [400, 300]] },
+    { id: 's5', itemId: 'i4', page: 4, points: [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]] },
+    { id: 's6', itemId: 'i5', page: 4, points: [[1, 1], [2, 2], [3, 3], [4, 4]] },
+    { id: 's7', itemId: 'i7', page: 4, points: [[0, 0], [50, 0]] }
   ]
 }
-
 export async function startMockLeopard(): Promise<MockLeopard> {
   const m: MockLeopard = { url: '', close: async () => {}, users: new Map(), sessions: new Map(), quota: 10 * 1024 ** 3, requests: [] }
   const used = (email: string) => {
@@ -56,7 +64,9 @@ export async function startMockLeopard(): Promise<MockLeopard> {
         res.writeHead(code, { 'Content-Type': 'application/json', ...headers })
         res.end(JSON.stringify(o))
       }
-      if (req.method !== 'GET' && req.headers.origin !== new URL(m.url).origin) return json(403, { error: 'Bad origin' })
+      // Leopard's rule: a non-GET request with an Origin must come from Leopard's own host.
+      const origin = req.headers.origin
+      if (req.method !== 'GET' && origin && new URL(origin).host !== req.headers.host) return json(403, { error: 'Bad origin' })
       const token = /(?:^|;\s*)leopard=([^;]+)/.exec(req.headers.cookie ?? '')?.[1]
       const email = token ? m.sessions.get(token) : undefined
       const user = email ? m.users.get(email) : undefined
@@ -67,23 +77,27 @@ export async function startMockLeopard(): Promise<MockLeopard> {
         if (!u || u.password !== password) return json(401, { error: 'Wrong email or password' })
         const t = randomBytes(16).toString('hex')
         m.sessions.set(t, String(e).toLowerCase())
-        return json(200, { email: e }, { 'Set-Cookie': `leopard=${t}; Path=/; HttpOnly; SameSite=Lax; Max-Age=7776000` })
+        return json(200, { email: String(e).toLowerCase(), name: '', used: used(String(e).toLowerCase()), quota: m.quota }, { 'Set-Cookie': `leopard=${t}; Path=/; HttpOnly; SameSite=Lax; Max-Age=7776000` })
       }
       if (p === '/api/logout' && req.method === 'POST') {
         if (token) m.sessions.delete(token)
         return json(200, { ok: true }, { 'Set-Cookie': 'leopard=; Path=/; Max-Age=0' })
       }
       if (!user || !email) return json(401, { error: 'Not signed in' })
-      if (p === '/api/me') return json(200, { email, used: used(email), quota: m.quota })
+      if (p === '/api/me') return json(200, { email, name: '', used: used(email), quota: m.quota })
       if (p === '/api/jobs' && req.method === 'GET')
-        return json(200, [...user.jobs.entries()].map(([id, j]) => ({ id, job: j.job, files: [...j.files.keys()], takeoffSaved: j.saved })))
+        return json(200, [...user.jobs.entries()].map(([id, j]) => ({ id, job: j.job, files: [...j.files.keys()], takeoffSaved: j.saved ?? 0 })))
       const jm = /^\/api\/jobs\/([^/]+)(?:\/(takeoff|files)(?:\/([^/]+))?)?$/.exec(p)
       if (!jm) return json(404, { error: 'Not found' })
       const id = decodeURIComponent(jm[1])
       const job = user.jobs.get(id)
       if (!jm[2]) {
         if (req.method === 'PUT') {
-          user.jobs.set(id, { job: JSON.parse(body.toString()), takeoff: job?.takeoff ?? null, saved: job?.saved ?? null, files: job?.files ?? new Map() })
+          if (!/^[a-z0-9]{4,40}$/.test(id)) return json(400, { error: 'Bad job id' })
+          let info: any
+          try { info = JSON.parse(body.toString()) } catch { return json(400, { error: 'Not JSON' }) }
+          if (info?.id !== id) return json(400, { error: 'Job id mismatch' })
+          user.jobs.set(id, { job: info, takeoff: job?.takeoff ?? null, saved: job?.saved ?? null, files: job?.files ?? new Map() })
           return json(200, { ok: true })
         }
         return json(405, { error: 'Method not allowed' })
@@ -91,7 +105,7 @@ export async function startMockLeopard(): Promise<MockLeopard> {
       if (!job) return json(404, { error: 'No such job' })
       if (jm[2] === 'takeoff') {
         if (req.method === 'GET') {
-          if (!job.takeoff) return json(404, { error: 'No takeoff saved' })
+          if (!job.takeoff) return json(404, { error: 'Not there' })
           res.writeHead(200, { 'Content-Type': 'application/json', 'X-Saved': String(job.saved) })
           return res.end(job.takeoff)
         }
@@ -100,7 +114,7 @@ export async function startMockLeopard(): Promise<MockLeopard> {
         return json(200, { ok: true })
       }
       const stored = decodeURIComponent(jm[3] ?? '')
-      if (!/^[A-Za-z0-9._-]+$/.test(stored)) return json(400, { error: 'Bad file name' })
+      if (!/^[A-Za-z0-9_-][A-Za-z0-9._-]{0,79}$/.test(stored)) return json(400, { error: 'Bad file name' })
       if (req.method === 'PUT') {
         if (used(email) + body.length > m.quota) return json(507, { error: 'Storage full' })
         job.files.set(stored, body)
@@ -121,13 +135,13 @@ export async function startMockLeopard(): Promise<MockLeopard> {
 /** Adds an account with one project and its saved takeoff. */
 export function seedLeopard(m: MockLeopard, email = 'kei@5310s.com', password = 'leopard-pass') {
   const jobs = new Map()
-  jobs.set('job-riverside', {
-    job: { id: 'job-riverside', name: 'Riverside Medical Office', number: '24-117', location: 'Springfield', changed: Date.now() - 3600_000, files: ['plans.pdf'], attachments: [] },
+  jobs.set('riverside01', {
+    job: { id: 'riverside01', name: 'Riverside Medical Office', number: '24-117', location: 'Springfield', changed: Date.now() - 3600_000, files: ['plans.pdf'], attachments: [] },
     takeoff: JSON.stringify(SAMPLE_TAKEOFF),
     saved: Date.now() - 600_000,
     files: new Map([['plans.pdf', Buffer.alloc(2048)]])
   })
-  jobs.set('job-library', { job: { id: 'job-library', name: 'County Library Reroof', number: '', location: '', changed: Date.now() - 86400_000, files: [], attachments: [] }, takeoff: null, saved: null, files: new Map() })
+  jobs.set('library01', { job: { id: 'library01', name: 'County Library Reroof', number: '', location: '', changed: Date.now() - 86400_000, files: [], attachments: [] }, takeoff: null, saved: null, files: new Map() })
   m.users.set(email, { password, jobs })
   return { email, password }
 }

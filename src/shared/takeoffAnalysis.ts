@@ -1,6 +1,7 @@
 // Turns a Leopard takeoff into bid packages: items grouped by trade (CSI division), with quantity
 // totals per unit, ready to create trades and fill request-for-bid emails ({{takeoff_quantities}}).
 import { STANDARD_TRADES } from './types'
+import { leopardQuantity, leopardUnit, measuredQuantity } from './leopardQuantity'
 
 export interface TakeoffLine {
   description: string
@@ -10,6 +11,10 @@ export interface TakeoffLine {
   trade: string
   sheet: string
   notes: string
+  /** Leopard's item id (for a link that opens Leopard on the item). */
+  itemId: string
+  /** Why there's no quantity: not measured yet, or measured only on sheets with no scale. */
+  issue: '' | 'unmeasured' | 'unscaled'
 }
 
 export interface TradePackage {
@@ -43,23 +48,14 @@ const normCsi = (s: string) => {
   return `${six.slice(0, 2)} ${six.slice(2, 4)} ${six.slice(4, 6)}`
 }
 
-const KIND_UNITS: Record<string, string> = { area: 'SF', linear: 'LF', segment: 'LF', count: 'EA', volume: 'CY' }
-
 /** True for Leopard's own takeoff file (TakeoffData): items plus the sections measured on each page. */
 export const isLeopardTakeoff = (raw: any) => !!raw && Array.isArray(raw.items) && Array.isArray(raw.sections)
 
 /** A Leopard item's quantity. Leopard computes it from the measured points and page scales. */
 export type QuantityFn = (item: any, takeoff: any) => number | null
 
-const typedQuantity: QuantityFn = (item) => {
-  const q = item?.quantity
-  if (q == null || q === '') return null
-  const n = Number(String(q).replace(/[,\s]/g, ''))
-  return isNaN(n) ? null : n
-}
-
-/** Lines from Leopard's TakeoffData: one per item, with the sheets it was measured on. */
-export function leopardLines(raw: any, quantityOf: QuantityFn = typedQuantity): TakeoffLine[] {
+/** Lines from Leopard's TakeoffData: one per item, with its quantity as Leopard's estimate shows it and its sheets. */
+export function leopardLines(raw: any, quantityOf: QuantityFn = leopardQuantity): TakeoffLine[] {
   const sheets = raw.sheets ?? {}
   const sheetName = (page: any) => {
     const s = Array.isArray(sheets) ? sheets[Number(page)] : sheets[page]
@@ -80,12 +76,19 @@ export function leopardLines(raw: any, quantityOf: QuantityFn = typedQuantity): 
       try {
         q = quantityOf(it, raw)
       } catch {
-        q = typedQuantity(it, raw)
+        q = null
+      }
+      let issue: TakeoffLine['issue'] = ''
+      if (q == null) {
+        const m = measuredQuantity(raw, it)
+        issue = m.sections && m.unscaled === m.sections ? 'unscaled' : 'unmeasured'
       }
       return {
         description: String(it.name ?? '').trim() || 'Item',
         quantity: q,
-        unit: String(it.unit || KIND_UNITS[String(it.kind)] || '').trim().toUpperCase(),
+        unit: leopardUnit(it).trim().toUpperCase(),
+        itemId: String(it.id ?? ''),
+        issue,
         csiCode: normCsi(String(it.csi ?? it.csiCode ?? '')),
         trade: String(it.trade ?? '').trim(),
         sheet: pages.map(sheetName).filter(Boolean).join(', '),
@@ -109,7 +112,9 @@ export function normalizeTakeoff(raw: any, quantityOf?: QuantityFn): TakeoffLine
         csiCode: normCsi(String(pick(it, 'csiCode', 'csi', 'csi_code', 'costCode', 'division', 'csiDivision') ?? '')),
         trade: String(pick(it, 'trade', 'tradeName', 'scope', 'category', 'group') ?? '').trim(),
         sheet: String(pick(it, 'sheet', 'page', 'sheetName', 'sheetNumber') ?? '').trim(),
-        notes: String(pick(it, 'notes', 'note', 'comment') ?? '').trim()
+        notes: String(pick(it, 'notes', 'note', 'comment') ?? '').trim(),
+        itemId: String(pick(it, 'id', 'itemId') ?? ''),
+        issue: (qty == null || isNaN(qty) ? 'unmeasured' : '') as TakeoffLine['issue']
       }
     })
     .filter((l) => l.description || l.quantity != null)
@@ -185,11 +190,11 @@ export function matchTrade<T extends { name: string; csiCode: string }>(pkg: { t
 
 export function fmtQty(q: number | null, unit: string): string {
   if (q == null) return unit
-  const n = Math.round(q * 100) / 100
+  const n = Math.round(q * 10) / 10 // as Leopard shows them: one decimal place
   return `${n.toLocaleString('en-US')} ${unit}`.trim()
 }
 
 /** Plain-text quantity list for a trade, used by {{takeoff_quantities}} in request-for-bid emails. */
 export function quantitiesText(lines: Pick<TakeoffLine, 'description' | 'quantity' | 'unit' | 'sheet'>[]): string {
-  return lines.map((l) => `- ${l.description}: ${fmtQty(l.quantity, l.unit)}${l.sheet ? ` (sheet ${l.sheet})` : ''}`).join('\n')
+  return lines.map((l) => `- ${l.description}${l.quantity == null ? '' : ': ' + fmtQty(l.quantity, l.unit)}${l.sheet ? ` (sheet ${l.sheet})` : ''}`).join('\n')
 }

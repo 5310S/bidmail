@@ -3,7 +3,6 @@
 // encrypted and sends back. Non-GET requests carry the server's Origin, which Leopard checks.
 import http from 'node:http'
 import https from 'node:https'
-import { randomUUID } from 'node:crypto'
 
 export const LEOPARD_DEFAULT_URL = 'https://leopard.5310s.com'
 
@@ -42,8 +41,11 @@ export const normalizeLeopardUrl = (u: string) => {
   return s
 }
 
-/** Leopard's storage names: letters, digits, dot, dash and underscore. */
-export const safeStoredName = (name: string) => name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+/, '').slice(0, 120) || 'file'
+/** Leopard's storage names: /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,79}$/ (no leading dot, 80 characters at most). */
+export const safeStoredName = (name: string) => name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^\.+/, '').slice(0, 80) || 'file'
+
+/** A new Leopard job id, made the way Leopard makes them (/^[a-z0-9]{4,40}$/). */
+export const newLeopardId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8).padEnd(6, '0')
 
 export class LeopardClient {
   readonly base: string
@@ -135,7 +137,7 @@ export class LeopardClient {
           number: String(pick(info, 'number', 'jobNumber') ?? ''),
           location: String(pick(info, 'location', 'address') ?? ''),
           changed: time(pick(info, 'changed', 'opened', 'created')),
-          takeoffSaved: time(x.takeoffSaved),
+          takeoffSaved: time(x.takeoffSaved) || null,
           fileCount: Array.isArray(x.files) ? x.files.length : 0
         }
       })
@@ -162,7 +164,7 @@ export class LeopardClient {
 
   /** Creates a Leopard project for a bid so the takeoff can start there with the job's details. */
   async createProject(info: { name: string; number?: string; location?: string; description?: string; notes?: string }, owner = ''): Promise<LeopardProject> {
-    const id = randomUUID()
+    const id = newLeopardId()
     const nowMs = Date.now()
     const job = {
       id,
@@ -182,9 +184,9 @@ export class LeopardClient {
     return { id, name: job.name, number: job.number, location: job.location, changed: nowMs, takeoffSaved: null, fileCount: 0 }
   }
 
-  /** Leopard has no per-project link yet, so this opens Leopard's job list. */
-  projectUrl(_id: string) {
-    return this.base + '/'
+  /** Opens the project in Leopard (once that browser's Leopard has it: signed in, list synced). */
+  projectUrl(id: string, itemId?: string) {
+    return `${this.base}/?job=${encodeURIComponent(id)}${itemId ? `&item=${encodeURIComponent(itemId)}` : ''}`
   }
 }
 

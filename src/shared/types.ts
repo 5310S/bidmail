@@ -44,6 +44,8 @@ export interface TradeTakeoffLine {
   quantity: number | null
   unit: string
   sheet: string
+  /** Leopard's item id, for a link that opens Leopard on the item. */
+  itemId?: string
 }
 
 export type TakeoffStatus = 'not_started' | 'in_progress' | 'done' | 'checked'

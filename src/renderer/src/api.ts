@@ -72,7 +72,7 @@ export const leopardApi = {
   link: (jobId: string, projectId: string | null) => invoke<Job | null>('leopard:link', jobId, projectId),
   create: (jobId: string) => invoke<Job | null>('leopard:create', jobId),
   importTakeoff: (jobId: string) => invoke<TakeoffAnalysisResult>('leopard:import', jobId),
-  open: () => invoke('leopard:open')
+  open: (projectId?: string, itemId?: string) => invoke('leopard:open', projectId, itemId)
 }
 
 export const files = {

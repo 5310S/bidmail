@@ -746,3 +746,6 @@ input.money { width: 130px; padding: 4px 8px; text-align: right; font-variant-nu
 .qty-table td:nth-child(2) { width: 110px; }
 .qty-table td:nth-child(3) { width: 56px; }
 .qty-table td:nth-child(4) { width: 28%; }
+
+.icon-link { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; vertical-align: middle; }
+.icon-link:hover { color: var(--accent); }

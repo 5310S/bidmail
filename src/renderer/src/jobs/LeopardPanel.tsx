@@ -41,7 +41,7 @@ export function LeopardFact({ detail, onSendInvites }: { detail: JobDetail; onSe
               <Button small kind={link.takeoffImportedAt ? 'default' : 'primary'} icon="download" onClick={() => (signedIn ? setImporting(true) : needSignIn())}>
                 {link.takeoffImportedAt ? 'Re-import' : 'Import takeoff'}
               </Button>
-              <Button small icon="external" title="Open Leopard" onClick={() => leopardApi.open()} />
+              <Button small icon="external" title="Open this project in Leopard" onClick={() => leopardApi.open(link.projectId)} />
               <Menu
                 align="right"
                 trigger={(open) => <Button small icon="more" onClick={open} />}
@@ -267,7 +267,7 @@ export function ImportTakeoffModal({ detail, onClose, onSendInvites }: { detail:
                   <span className={cx('chip sm', p.existingTradeId ? '' : 'new')}>{p.existingTradeId ? `Updates ${p.existingTradeName}` : p.tradeName === 'Unassigned' ? 'No trade tag' : 'New trade'}</span>
                   <button className="link-btn small" onClick={(e) => { e.preventDefault(); setOpen(open === p.tradeName ? '' : p.tradeName) }}>{open === p.tradeName ? 'Hide' : 'Items'}</button>
                 </label>
-                {open === p.tradeName && <QtyTable lines={p.lines} />}
+                {open === p.tradeName && <QtyTable lines={p.lines} projectId={res.projectId} />}
               </div>
             ))}
           </div>
@@ -280,13 +280,20 @@ export function ImportTakeoffModal({ detail, onClose, onSendInvites }: { detail:
   )
 }
 
-function QtyTable({ lines }: { lines: { description: string; quantity: number | null; unit: string; sheet: string }[] }) {
+function QtyTable({ lines, projectId }: { lines: { description: string; quantity: number | null; unit: string; sheet: string; itemId?: string }[]; projectId?: string }) {
   return (
     <table className="qty-table">
       <tbody>
         {lines.map((l, i) => (
           <tr key={i}>
-            <td>{l.description}</td>
+            <td>
+              {l.description}
+              {projectId && l.itemId && (
+                <button className="icon-link" title="Show this item in Leopard" onClick={() => leopardApi.open(projectId, l.itemId)}>
+                  <Icon name="external" size={12} />
+                </button>
+              )}
+            </td>
             <td className="num">{l.quantity == null ? <span className="muted">-</span> : fmtQty(l.quantity, '')}</td>
             <td>{l.unit}</td>
             <td className="muted small">{l.sheet}</td>
@@ -334,7 +341,7 @@ export function TakeoffTab({ detail, onImport, onSendInvites }: { detail: JobDet
               <span className="small">{totalsText(totals)}</span>
               <span className="muted small">{t.bidders.length} compan{t.bidders.length === 1 ? 'y' : 'ies'}</span>
             </div>
-            <QtyTable lines={t.takeoffLines} />
+            <QtyTable lines={t.takeoffLines} projectId={link?.projectId} />
           </div>
         )
       })}

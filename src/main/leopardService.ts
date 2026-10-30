@@ -111,7 +111,7 @@ export class LeopardService {
       return {
         tradeName: p.tradeName,
         csiCode: p.csiCode,
-        lines: p.lines.map((l) => ({ description: l.description, quantity: l.quantity, unit: l.unit, sheet: l.sheet })),
+        lines: p.lines.map((l) => ({ description: l.description, quantity: l.quantity, unit: l.unit, sheet: l.sheet, itemId: l.itemId || undefined })),
         totals: p.totals,
         existingTradeId: t?.id ?? null,
         existingTradeName: t?.name ?? ''
@@ -119,7 +119,10 @@ export class LeopardService {
     })
     const warnings: string[] = []
     const missing = lines.filter((l) => l.quantity == null).length
-    if (missing) warnings.push(`${missing} item(s) have no quantity yet. They're listed without one.`)
+    const unscaled = lines.filter((l) => l.issue === 'unscaled').length
+    const unmeasured = missing - unscaled
+    if (unscaled) warnings.push(`${unscaled} item(s) are measured only on sheets with no scale, so they have no quantity. Set the scale in Leopard and re-import.`)
+    if (unmeasured) warnings.push(`${unmeasured} item(s) aren't measured yet. They're listed without a quantity.`)
 
     // The copy kept with the job (shared with the team): the takeoff itself plus a readable summary.
     const when = stamp()
@@ -178,7 +181,9 @@ export class LeopardService {
     }
   }
 
-  openUrl(): string {
-    return this.client().projectUrl('')
+  /** Leopard itself, or a linked project (and one of its items). */
+  openUrl(projectId?: string, itemId?: string): string {
+    const c = this.client()
+    return projectId ? c.projectUrl(projectId, itemId) : c.base + '/'
   }
 }

@@ -115,7 +115,7 @@ function registerIpc() {
   handle('leopard:link', (jobId: string, projectId: string | null) => leopard.link(jobId, projectId))
   handle('leopard:create', (jobId: string) => leopard.createProject(jobId))
   handle('leopard:import', (jobId: string) => leopard.importTakeoff(jobId))
-  handle('leopard:open', () => shell.openExternal(leopard.openUrl()))
+  handle('leopard:open', (projectId?: string, itemId?: string) => shell.openExternal(leopard.openUrl(projectId, itemId)))
   // settings
   handle('settings:get', () => publicSettings())
   handle('settings:save', (patch: Partial<AppSettings>) => {
