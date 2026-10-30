@@ -11,8 +11,9 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const version = pkg.version
 const outDir = path.join(root, 'release', `v${version}-linux`)
-const app = path.join(outDir, 'linux-unpacked')
-if (!fs.existsSync(path.join(app, 'bidmail'))) throw new Error(`Build the Linux app first: npx electron-builder --linux dir --x64 --config.directories.output=release/v${version}-linux`)
+const app = [path.join(outDir, 'linux-unpacked'), path.join(root, 'release', 'linux-unpacked')].find((d) => fs.existsSync(path.join(d, 'bidmail')))
+if (!app) throw new Error('Build the Linux app first: npx electron-builder --linux dir --x64')
+fs.mkdirSync(outDir, { recursive: true })
 
 const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'bidmail-arch-'))
 const now = Math.floor(Date.now() / 1000)
@@ -75,7 +76,8 @@ const line = (prefix, e) =>
   (e.link ? ` link=${esc(e.link)}` : '')
 const spec = (prefix, extra = []) =>
   ['#mtree', ...extra, ...[...dirs].sort().map((d) => line(prefix, { path: d, type: 'dir', mode: '0755' })), ...entries.map((e) => line(prefix, e))].join('\n') + '\n'
-const bsdtar = (args) => execFileSync('tar', args, { stdio: ['ignore', 'pipe', 'inherit'], cwd: stage })
+// bsdtar: Windows' and macOS' tar; on Linux, the bsdtar command (libarchive-tools / libarchive).
+const bsdtar = (args) => execFileSync(process.env.BSDTAR || (process.platform === 'linux' ? 'bsdtar' : 'tar'), args, { stdio: ['ignore', 'pipe', 'inherit'], cwd: stage })
 
 // .PKGINFO: what pacman shows and checks. Depends: what Electron's bundled Chromium needs on Arch.
 const size = entries.reduce((a, e) => a + (e.size ?? 0), 0)

@@ -18,7 +18,8 @@
     "server": "npm run server:build && node server/dist/bidmail-server.js",
     "dist": "electron-vite build && electron-builder --win --x64",
     "dist:mac": "electron-vite build && electron-builder --mac --arm64 --x64",
-    "test:update": "esbuild tests/update-smoke.ts --bundle --platform=node --format=cjs --packages=external --outfile=tests/dist/ui/update-smoke.cjs --log-level=warning && node tests/dist/ui/update-smoke.cjs"
+    "test:update": "esbuild tests/update-smoke.ts --bundle --platform=node --format=cjs --packages=external --outfile=tests/dist/ui/update-smoke.cjs --log-level=warning && node tests/dist/ui/update-smoke.cjs",
+    "dist:arch": "electron-vite build && electron-builder --linux dir --x64 && node scripts/package-arch.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.17",
