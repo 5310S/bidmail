@@ -4,10 +4,10 @@ Email and bid-invitation tracking for construction estimators, for Windows and m
 
 ## Install
 
-**Windows:** run `release\BidMail-Setup-1.1.0.exe`. The installer is not code-signed yet, so Windows may show
+**Windows:** run `release\BidMail-Setup-1.2.0.exe`. The installer is not code-signed yet, so Windows may show
 "Windows protected your PC". Click **More info > Run anyway**.
 
-**Mac:** open `BidMail-1.1.0-mac-arm64.dmg` (Apple Silicon: M1-M4) or `BidMail-1.1.0-mac-x64.dmg` (Intel) and drag
+**Mac:** open `BidMail-1.2.0-mac-arm64.dmg` (Apple Silicon: M1-M4) or `BidMail-1.2.0-mac-x64.dmg` (Intel) and drag
 BidMail to Applications. It is not notarized by Apple yet: the first time, **right-click BidMail > Open**, then **Open**
 (on recent macOS: **System Settings > Privacy & Security > Open Anyway**). See "Building the Mac version" below.
 
@@ -42,8 +42,22 @@ BidMail to Applications. It is not notarized by Apple yet: the first time, **rig
   license, prequalified, and "Bids back" (how often they actually send a price).
 - **Bid Board**, **Activity** (with **Change history**: who changed what), print / save the bid status as PDF, export to Excel.
 
-## Email
+## Bid workflow: who's doing what, and where every company stands
 
+- **Takeoff** (job header): who's doing it, status (Not started / In progress / Done / Checked) and due date.
+- **Timeline** tab: the whole bidding process on one date line. Milestones (bid docs received, invitations out,
+  pre-bid meeting, RFI deadline, takeoff complete, sub bids due) can be dragged to a new date or clicked to edit (date,
+  owner, done, notes). The takeoff shows as a bar. Each trade row has a dot for every email, call, "will bid", price and
+  filed quote; expand a trade to see each company. Today and the bid due date are marked.
+- **Progress Board** tab: a column per step, a card per company. Drag a card to a column to complete that step, or
+  click it for the checklist: every step with who did it and when.
+- **Settings > Bid Workflow**: anyone can rename, reorder, turn off or add steps (e.g. "Scope review call") and the
+  standard milestones for new jobs. Every step and milestone shows who last changed it; changes are also in the
+  Change history. Built-in steps tick themselves: emailing drawings, logging a call, "will bid", entering a price,
+  saving a quote file.
+- **Today > My tasks**: takeoffs and milestones assigned to you (or everyone), with Done buttons.
+
+## Email
 - Text size A-/A+, **Simple** view, pictures blocked until allowed, conversations (toggle **Conversations**).
 - Select several: Ctrl/Cmd+click, Shift+click, Ctrl/Cmd+A or checkboxes, then read/unread, flag, archive, move, delete.
 - **Snooze** (clock button): hides an email until later; it comes back unread with a notification.
@@ -117,7 +131,7 @@ set `"identity"`, `"hardenedRuntime": true`, `"notarize": true`.
 ```
 npm install
 npm run dev        # run with hot reload
-npm test           # 35 tests: data, team server (HTTPS, logins), Microsoft/Google sign-in, IMAP/SMTP mail,
+npm test           # 40 tests: data, team server (HTTPS, logins), Microsoft/Google sign-in, IMAP/SMTP mail,
                    #   snooze, rules, conversations, calendar (local test servers; nothing goes to the internet)
 npm run test:ui    # launches the real app, clicks through every screen, saves tests/screens/*.png
 npm run dist       # Windows installer + latest.yml into release/

@@ -10,10 +10,13 @@ import { ACTIVITY_LABELS, TradeCard } from './TradeCard'
 import { BulkSend } from './BulkSend'
 import { AddendaTab } from './AddendaTab'
 import { LevelingTab } from './LevelingTab'
+import { TimelineTab } from './TimelineTab'
+import { BoardTab } from './BoardTab'
+import { TakeoffPanel } from './TakeoffPanel'
 import { buildJobReport } from './report'
 import { buildEventIcs } from '../../../shared/ics'
 
-type Tab = 'trades' | 'addenda' | 'leveling' | 'board' | 'activity'
+type Tab = 'trades' | 'timeline' | 'workflow' | 'addenda' | 'leveling' | 'board' | 'activity'
 
 export function JobView({ jobId, initialTab }: { jobId: string; initialTab?: string }) {
   const { go, toast, confirm, jobs, settings } = useApp()
@@ -148,6 +151,7 @@ export function JobView({ jobId, initialTab }: { jobId: string; initialTab?: str
               )}
             </div>
           </div>
+          <TakeoffPanel job={job} extraNames={detail.milestones.map((m) => m.owner)} />
           <div className="fact links">
             <Button icon="external" disabled={!job.drawingsLink} title={job.drawingsLink || 'No drawings link - use Edit Job'} onClick={() => sys.openExternal(job.drawingsLink)}>Drawings</Button>
             <Button icon="external" disabled={!job.specsLink} title={job.specsLink || 'No spec link - use Edit Job'} onClick={() => sys.openExternal(job.specsLink)}>Spec Book</Button>
@@ -176,6 +180,8 @@ export function JobView({ jobId, initialTab }: { jobId: string; initialTab?: str
 
       <div className="tabs">
         <button className={tab === 'trades' ? 'on' : ''} onClick={() => setTab('trades')}>Trades & Companies <span className="count">{trades.length}</span></button>
+        <button className={tab === 'timeline' ? 'on' : ''} onClick={() => setTab('timeline')}>Timeline</button>
+        <button className={tab === 'workflow' ? 'on' : ''} onClick={() => setTab('workflow')}>Progress Board</button>
         <button className={tab === 'addenda' ? 'on' : ''} onClick={() => setTab('addenda')}>Addenda {detail.addenda.length > 0 && <span className="count">{detail.addenda.length}</span>}</button>
         <button className={tab === 'leveling' ? 'on' : ''} onClick={() => setTab('leveling')}>Bid Leveling</button>
         <button className={tab === 'board' ? 'on' : ''} onClick={() => setTab('board')}>Bid Board</button>
@@ -218,6 +224,8 @@ export function JobView({ jobId, initialTab }: { jobId: string; initialTab?: str
           ))}
         </>
       )}
+      {tab === 'timeline' && <TimelineTab detail={detail} />}
+      {tab === 'workflow' && <BoardTab detail={detail} />}
       {tab === 'addenda' && <AddendaTab detail={detail} onSend={(addendumId) => setBulkMode({ mode: 'addendum', addendumId })} />}
       {tab === 'leveling' && <LevelingTab detail={detail} />}
       {tab === 'board' && <BidBoard detail={detail} />}

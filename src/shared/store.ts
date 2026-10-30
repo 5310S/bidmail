@@ -5,8 +5,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
 import {
   ADDENDUM_TEMPLATE, Activity, Addendum, AuditEntry, Bidder, BidderAction, BidderActionInput, Company, CompanyWithStats,
-  DEFAULT_TEMPLATES, EmailMatch, FileMeta, Job, JobDetail, JobSummary, TeamUser, Template, TodaySummary, Trade,
-  TradeWithBidders, effectiveTradeStatus
+  DEFAULT_TEMPLATES, DEFAULT_WORKFLOW, EMPTY_TAKEOFF, EmailMatch, FileMeta, Job, JobDetail, JobSummary, Milestone, StepMark, Takeoff,
+  TeamUser, Template, TodaySummary, TodayTask, Trade, TradeWithBidders, WorkflowConfig, effectiveTradeStatus
 } from './types'
 
 type Row = Record<string, any>
@@ -75,6 +75,12 @@ CREATE TABLE IF NOT EXISTS audit_log (
   id TEXT PRIMARY KEY, at TEXT NOT NULL, user_name TEXT DEFAULT '', method TEXT, summary TEXT, job_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log(at);
+CREATE TABLE IF NOT EXISTS milestones (
+  id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE, name TEXT NOT NULL, due_at TEXT, done_at TEXT,
+  owner TEXT DEFAULT '', notes TEXT DEFAULT '', sort_order INTEGER DEFAULT 0, updated_by TEXT DEFAULT '', updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_milestones_job ON milestones(job_id);
+CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT);
 `
 
 // Columns added after the first release: [table, column, definition]
@@ -96,7 +102,9 @@ const MIGRATIONS: [string, string, string][] = [
   ['companies', 'union_status', "TEXT DEFAULT ''"],
   ['companies', 'certifications', "TEXT DEFAULT ''"],
   ['companies', 'license', "TEXT DEFAULT ''"],
-  ['companies', 'prequalified', 'INTEGER DEFAULT 0']
+  ['companies', 'prequalified', 'INTEGER DEFAULT 0'],
+  ['jobs', 'takeoff', "TEXT DEFAULT '{}'"],
+  ['bidders', 'steps_json', "TEXT DEFAULT '{}'"]
 ]
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024
@@ -131,6 +139,7 @@ function toJob(r: Row): Job {
     bidDue: r.bid_due ?? null, drawingsLink: r.drawings_link ?? '', specsLink: r.specs_link ?? '',
     folderPath: r.folder_path ?? '', notes: r.notes ?? '', status: r.status ?? 'bidding',
     alternates: json(r.alternates, []),
+    takeoff: { ...EMPTY_TAKEOFF, ...json<Partial<Takeoff>>(r.takeoff, {}) },
     createdAt: r.created_at, updatedAt: r.updated_at, updatedBy: r.updated_by ?? ''
   }
 }
@@ -152,6 +161,7 @@ function toBidder(r: Row): Bidder {
     willBidAt: r.will_bid_at ?? null, notes: r.notes ?? '',
     inclusions: r.inclusions ?? '', exclusions: r.exclusions ?? '', quoteNotes: r.quote_notes ?? '',
     alternatePrices: json(r.alternate_prices, {}), scope: json(r.scope_json, {}),
+    steps: json(r.steps_json, {}), stepLog: {},
     addendaSent: {}, addendaAck: {},
     createdAt: r.created_at, updatedAt: r.updated_at
   }
@@ -186,6 +196,20 @@ function toFile(r: Row): FileMeta {
     size: Number(r.size ?? 0), createdAt: r.created_at, createdBy: r.created_by ?? ''
   }
 }
+function toMilestone(r: Row): Milestone {
+  return {
+    id: r.id, jobId: r.job_id, name: r.name, dueAt: r.due_at ?? null, doneAt: r.done_at ?? null, owner: r.owner ?? '',
+    notes: r.notes ?? '', sortOrder: Number(r.sort_order ?? 0), updatedBy: r.updated_by ?? '', updatedAt: r.updated_at
+  }
+}
+
+const MILESTONE_FIELDS: Record<string, string> = { name: 'name', dueAt: 'due_at', doneAt: 'done_at', owner: 'owner', notes: 'notes', sortOrder: 'sort_order' }
+
+// Activity types that tick a built-in workflow step.
+const STEP_OF_ACTIVITY: Record<string, string> = {
+  drawings_sent: 'drawings_sent', follow_up_call: 'follow_up', follow_up_email: 'follow_up', will_bid: 'will_bid', price_received: 'price_received'
+}
+
 function toUser(r: Row): TeamUser {
   return {
     id: r.id, username: r.username, displayName: r.display_name || r.username, role: r.role === 'admin' ? 'admin' : 'member',
@@ -227,13 +251,14 @@ export const STORE_METHODS = [
   'listActivities', 'listCompanies', 'saveCompany', 'deleteCompany', 'importCompanies',
   'listTemplates', 'saveTemplate', 'deleteTemplate', 'emailIndex', 'exportJobCsv',
   'addAddendum', 'updateAddendum', 'deleteAddendum', 'markAddendumSent', 'setAddendumAck',
-  'addFile', 'listFiles', 'getFile', 'deleteFile', 'todaySummary', 'listAudit'
+  'addFile', 'listFiles', 'getFile', 'deleteFile', 'todaySummary', 'listAudit',
+  'getWorkflow', 'saveWorkflow', 'addMilestone', 'updateMilestone', 'deleteMilestone', 'applyMilestoneTemplate', 'setTakeoff', 'setBidderStep'
 ] as const
 export type StoreMethod = (typeof STORE_METHODS)[number]
 
 const READ_METHODS = new Set([
   'getRevision', 'listJobs', 'getJob', 'listActivities', 'listCompanies', 'listTemplates', 'emailIndex',
-  'exportJobCsv', 'listFiles', 'getFile', 'todaySummary', 'listAudit'
+  'exportJobCsv', 'listFiles', 'getFile', 'todaySummary', 'listAudit', 'getWorkflow'
 ])
 
 const ACTION_LABELS: Record<string, string> = {
@@ -362,11 +387,18 @@ export class BidStore {
       if (s.sent_at) b.addendaSent[s.addendum_id] = s.sent_at
       if (s.ack_at) b.addendaAck[s.addendum_id] = s.ack_at
     }
+    // Who did each built-in step last (for 'Emailed by Kei, Oct 29' on the board and timeline).
+    for (const a of this.all("SELECT bidder_id, type, at, user_name FROM activities WHERE job_id = ? AND bidder_id IS NOT NULL ORDER BY at", id)) {
+      const b = byId.get(a.bidder_id)
+      const step = STEP_OF_ACTIVITY[a.type]
+      if (b && step) b.stepLog[step] = { at: a.at, by: a.user_name ?? '' }
+    }
     return {
       job: toJob(r),
       trades: trades.map((t) => ({ ...t, bidders: bidders.filter((b) => b.tradeId === t.id) })),
       addenda: this.all('SELECT * FROM addenda WHERE job_id = ? ORDER BY created_at', id).map(toAddendum),
-      files: this.listFiles(id)
+      files: this.listFiles(id),
+      milestones: this.listMilestones(id)
     }
   }
 
@@ -380,6 +412,7 @@ export class BidStore {
       data.drawingsLink ?? '', data.specsLink ?? '', data.folderPath ?? '', data.notes ?? '', data.status ?? 'bidding',
       JSON.stringify(data.alternates ?? []), ts, ts, userName
     )
+    this.insertTemplateMilestones(id, data.bidDue ?? null, userName)
     this.bump()
     return toJob(this.get('SELECT * FROM jobs WHERE id = ?', id)!)
   }
@@ -397,6 +430,7 @@ export class BidStore {
       this.run('DELETE FROM addendum_sends WHERE addendum_id IN (SELECT id FROM addenda WHERE job_id = ?)', id)
       this.run('DELETE FROM addenda WHERE job_id = ?', id)
       this.run('DELETE FROM files WHERE job_id = ?', id)
+      this.run('DELETE FROM milestones WHERE job_id = ?', id)
       this.run('DELETE FROM activities WHERE job_id = ?', id)
       this.run('DELETE FROM bidders WHERE job_id = ?', id)
       this.run('DELETE FROM trades WHERE job_id = ?', id)
@@ -715,6 +749,137 @@ export class BidStore {
     this.bump()
     return true
   }
+  // ---------- workflow (shared, customizable by anyone; changes carry the person's name) ----------
+  getWorkflow(): WorkflowConfig {
+    const saved = json<Partial<WorkflowConfig> | null>(this.get("SELECT value FROM config WHERE key = 'workflow'")?.value, null)
+    if (!saved) return structuredClone(DEFAULT_WORKFLOW)
+    const steps = [...(saved.steps ?? [])]
+    // Built-in steps can be renamed or turned off, but never lost.
+    for (const d of DEFAULT_WORKFLOW.steps) if (!steps.some((s) => s.kind === d.kind)) steps.push({ ...d, enabled: false })
+    return { ...DEFAULT_WORKFLOW, ...saved, steps, milestones: saved.milestones ?? DEFAULT_WORKFLOW.milestones }
+  }
+
+  saveWorkflow(cfg: WorkflowConfig, userName = ''): WorkflowConfig {
+    const prev = this.getWorkflow()
+    const ts = now()
+    const seen = new Set<string>()
+    const steps = (cfg.steps ?? []).filter((s) => s.name?.trim() && !seen.has(s.id) && seen.add(s.id)).map((s) => {
+      const old = prev.steps.find((p) => p.id === s.id)
+      const kind = old ? old.kind : 'custom' // a step's built-in behaviour can't be changed, only its name
+      const changed = !old || old.name !== s.name.trim() || old.enabled !== s.enabled
+      return { id: s.id, name: s.name.trim(), kind, enabled: !!s.enabled, changedBy: changed ? userName : old!.changedBy, changedAt: changed ? ts : old!.changedAt }
+    })
+    for (const d of DEFAULT_WORKFLOW.steps) if (!steps.some((s) => s.kind === d.kind)) steps.push({ ...(prev.steps.find((p) => p.kind === d.kind) ?? d), enabled: false })
+    if (!steps.some((s) => s.enabled)) throw new Error('Keep at least one step turned on.')
+    const mseen = new Set<string>()
+    const milestones = (cfg.milestones ?? []).filter((m) => m.name?.trim() && !mseen.has(m.id) && mseen.add(m.id)).map((m) => {
+      const old = prev.milestones.find((p) => p.id === m.id)
+      const days = m.daysBeforeBidDue == null || isNaN(Number(m.daysBeforeBidDue)) ? null : Number(m.daysBeforeBidDue)
+      const changed = !old || old.name !== m.name.trim() || old.daysBeforeBidDue !== days
+      return { id: m.id, name: m.name.trim(), daysBeforeBidDue: days, changedBy: changed ? userName : old!.changedBy, changedAt: changed ? ts : old!.changedAt }
+    })
+    const next: WorkflowConfig = { steps, milestones, updatedBy: userName, updatedAt: ts }
+    this.run("INSERT INTO config(key, value) VALUES('workflow', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", JSON.stringify(next))
+    this.bump()
+    return next
+  }
+
+  // ---------- milestones ----------
+  listMilestones(jobId: string): Milestone[] {
+    return this.all("SELECT * FROM milestones WHERE job_id = ? ORDER BY CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at, sort_order", jobId).map(toMilestone)
+  }
+
+  private insertTemplateMilestones(jobId: string, bidDue: string | null, userName: string, onlyMissing = false) {
+    const have = new Set(this.listMilestones(jobId).map((m) => m.name.toLowerCase()))
+    const ts = now()
+    this.getWorkflow().milestones.forEach((m, i) => {
+      if (onlyMissing && have.has(m.name.toLowerCase())) return
+      const due = bidDue && m.daysBeforeBidDue != null ? new Date(new Date(bidDue).getTime() - m.daysBeforeBidDue * 86400000).toISOString() : null
+      this.run(
+        'INSERT INTO milestones(id, job_id, name, due_at, owner, notes, sort_order, updated_by, updated_at) VALUES(?,?,?,?,?,?,?,?,?)',
+        randomUUID(), jobId, m.name, due, '', '', i, userName, ts
+      )
+    })
+  }
+
+  /** Adds the team's standard milestones that this job doesn't have yet. */
+  applyMilestoneTemplate(jobId: string, userName = '') {
+    const job = this.get('SELECT bid_due FROM jobs WHERE id = ?', jobId)
+    if (!job) throw new Error('Job not found')
+    this.insertTemplateMilestones(jobId, job.bid_due ?? null, userName, true)
+    this.bump()
+    return this.listMilestones(jobId)
+  }
+
+  addMilestone(jobId: string, data: Partial<Milestone>, userName = ''): Milestone {
+    if (!this.get('SELECT id FROM jobs WHERE id = ?', jobId)) throw new Error('Job not found')
+    const id = randomUUID()
+    const order = Number(this.get('SELECT COALESCE(MAX(sort_order), 0) AS m FROM milestones WHERE job_id = ?', jobId)?.m ?? 0) + 1
+    this.run(
+      'INSERT INTO milestones(id, job_id, name, due_at, done_at, owner, notes, sort_order, updated_by, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+      id, jobId, data.name?.trim() || 'Milestone', data.dueAt ?? null, data.doneAt ?? null, data.owner ?? '', data.notes ?? '', order, userName, now()
+    )
+    this.bump()
+    return toMilestone(this.get('SELECT * FROM milestones WHERE id = ?', id)!)
+  }
+
+  updateMilestone(id: string, data: Partial<Milestone>, userName = ''): Milestone | null {
+    const sets: string[] = []
+    const vals: any[] = []
+    for (const [k, v] of Object.entries(data)) {
+      if (!MILESTONE_FIELDS[k]) continue
+      sets.push(`${MILESTONE_FIELDS[k]} = ?`)
+      vals.push(v ?? null)
+    }
+    sets.push('updated_by = ?', 'updated_at = ?')
+    vals.push(userName, now())
+    this.run(`UPDATE milestones SET ${sets.join(', ')} WHERE id = ?`, ...vals, id)
+    this.bump()
+    const r = this.get('SELECT * FROM milestones WHERE id = ?', id)
+    return r ? toMilestone(r) : null
+  }
+
+  deleteMilestone(id: string) {
+    this.run('DELETE FROM milestones WHERE id = ?', id)
+    this.bump()
+    return true
+  }
+
+  // ---------- takeoff (one per job) ----------
+  setTakeoff(jobId: string, patch: Partial<Takeoff>, userName = ''): Takeoff {
+    const r = this.get('SELECT takeoff FROM jobs WHERE id = ?', jobId)
+    if (!r) throw new Error('Job not found')
+    const cur = { ...EMPTY_TAKEOFF, ...json<Partial<Takeoff>>(r.takeoff, {}) }
+    const next: Takeoff = {
+      assignee: patch.assignee !== undefined ? patch.assignee.trim() : cur.assignee,
+      status: patch.status ?? cur.status,
+      dueAt: patch.dueAt !== undefined ? patch.dueAt : cur.dueAt,
+      notes: patch.notes !== undefined ? patch.notes : cur.notes,
+      updatedBy: userName,
+      updatedAt: now()
+    }
+    this.run('UPDATE jobs SET takeoff = ?, updated_at = ?, updated_by = ? WHERE id = ?', JSON.stringify(next), now(), userName, jobId)
+    this.bump()
+    return next
+  }
+
+  // ---------- custom workflow steps on a company ----------
+  /** Ticks (or unticks) a custom step, or "Quote filed", on one company, recording who and when. */
+  setBidderStep(bidderId: string, stepId: string, done: boolean, at?: string, userName = ''): Bidder {
+    const r = this.get('SELECT * FROM bidders WHERE id = ?', bidderId)
+    if (!r) throw new Error('Company not found on this job')
+    const steps = json<Record<string, StepMark>>(r.steps_json, {})
+    const stepName = this.getWorkflow().steps.find((s) => s.id === stepId)?.name ?? stepId
+    if (done) steps[stepId] = { at: at || now(), by: userName }
+    else delete steps[stepId]
+    this.tx(() => {
+      this.run('UPDATE bidders SET steps_json = ?, updated_at = ? WHERE id = ?', JSON.stringify(steps), now(), bidderId)
+      this.logActivity({ jobId: r.job_id, tradeId: r.trade_id, bidderId, type: 'step', note: done ? stepName : `Unchecked: ${stepName}`, amount: null, at: done ? steps[stepId].at : now(), userName })
+    })
+    this.bump()
+    return toBidder(this.get('SELECT * FROM bidders WHERE id = ?', bidderId)!)
+  }
+
   // ---------- Today ----------
   /** Everything that needs attention across open jobs: follow-ups due, short trades, bids due, addenda not sent. */
   todaySummary(followUpDays = 3, nowIso?: string): TodaySummary {
@@ -758,10 +923,21 @@ export class BidStore {
         if (notSent || notAck) addenda.push({ jobId: js.id, jobName: js.name, addendumId: a.id, number: a.number, title: a.title, notSent, notAcknowledged: notAck })
       }
     }
+    // Assigned work: each open job's takeoff (until done) and its milestones (until done).
+    const tasks: TodayTask[] = []
+    for (const js of jobs) {
+      if (js.takeoff.status !== 'done' && js.takeoff.status !== 'checked') {
+        tasks.push({ kind: 'takeoff', id: js.id, jobId: js.id, jobName: js.name, title: 'Takeoff', owner: js.takeoff.assignee, dueAt: js.takeoff.dueAt, status: js.takeoff.status })
+      }
+      for (const m of this.listMilestones(js.id)) {
+        if (!m.doneAt) tasks.push({ kind: 'milestone', id: m.id, jobId: js.id, jobName: js.name, title: m.name, owner: m.owner, dueAt: m.dueAt, status: 'open' })
+      }
+    }
+    tasks.sort((a, b) => (a.dueAt ?? '9').localeCompare(b.dueAt ?? '9'))
     followUps.sort((a, b) => (a.bidDue ?? '9').localeCompare(b.bidDue ?? '9') || b.daysSince - a.daysSince)
     shortTrades.sort((a, b) => (a.bidDue ?? '9').localeCompare(b.bidDue ?? '9') || a.priced + a.willBid - (b.priced + b.willBid))
     const dueSoon = jobs.filter((j) => j.bidDue && new Date(j.bidDue).getTime() >= nowMs && new Date(j.bidDue).getTime() - nowMs < 7 * day)
-    return { followUps, shortTrades, dueSoon, addenda, generatedAt: new Date(nowMs).toISOString() }
+    return { followUps, shortTrades, dueSoon, addenda, tasks, generatedAt: new Date(nowMs).toISOString() }
   }
 
   // ---------- company directory ----------
@@ -1057,6 +1233,24 @@ export class BidStore {
       }
       case 'addFile': return { summary: `Attached file "${a[2] ?? ''}"${a[1] ? ' to ' + bidder(a[1]).label : ''}`, jobId: a[0] }
       case 'deleteFile': return { summary: `Deleted file "${this.name('files', a[0])}"`, jobId: this.jobOf('files', a[0]) }
+      case 'saveWorkflow': return { summary: 'Changed the team workflow steps / milestones', jobId: null }
+      case 'addMilestone': return { summary: `Added milestone "${a[1]?.name ?? ''}"`, jobId: a[0] }
+      case 'updateMilestone': {
+        const what = a[1]?.doneAt ? 'Completed' : a[1]?.doneAt === null ? 'Reopened' : 'Edited'
+        return { summary: `${what} milestone "${this.name('milestones', a[0])}"${what === 'Edited' ? ': ' + fields(a[1]) : ''}`, jobId: this.jobOf('milestones', a[0]) }
+      }
+      case 'deleteMilestone': return { summary: `Deleted milestone "${this.name('milestones', a[0])}"`, jobId: this.jobOf('milestones', a[0]) }
+      case 'applyMilestoneTemplate': return { summary: 'Added the standard milestones', jobId: a[0] }
+      case 'setTakeoff': {
+        const p = a[1] ?? {}
+        const parts = [p.assignee !== undefined && `assigned to ${p.assignee || 'nobody'}`, p.status && `status ${p.status.replace('_', ' ')}`, p.dueAt !== undefined && 'due date', p.notes !== undefined && 'notes'].filter(Boolean)
+        return { summary: `Takeoff: ${parts.join(', ')}`, jobId: a[0] }
+      }
+      case 'setBidderStep': {
+        const b = bidder(a[0])
+        const step = this.getWorkflow().steps.find((s) => s.id === a[1])?.name ?? a[1]
+        return { summary: `${b.label}: ${a[2] ? '' : 'unchecked '}${step}`, jobId: b.jobId }
+      }
       default: return { summary: method, jobId: null }
     }
   }
@@ -1076,6 +1270,12 @@ export class BidStore {
       case 'setAddendumAck': result = this.setAddendumAck(a[0], a[1], a[2] === undefined ? now() : a[2], userName); break
       case 'addFile': result = this.addFile(a[0], a[1] ?? null, a[2], a[3], a[4], userName); break
       case 'todaySummary': result = this.todaySummary(a[0] ?? 3, a[1]); break
+      case 'saveWorkflow': result = this.saveWorkflow(a[0], userName); break
+      case 'addMilestone': result = this.addMilestone(a[0], a[1] ?? {}, userName); break
+      case 'updateMilestone': result = this.updateMilestone(a[0], a[1] ?? {}, userName); break
+      case 'applyMilestoneTemplate': result = this.applyMilestoneTemplate(a[0], userName); break
+      case 'setTakeoff': result = this.setTakeoff(a[0], a[1] ?? {}, userName); break
+      case 'setBidderStep': result = this.setBidderStep(a[0], a[1], !!a[2], a[3], userName); break
       case 'listAudit': result = this.listAudit(a[0] ?? null, a[1] ?? 300); break
       default: result = (this as any)[method](...a)
     }

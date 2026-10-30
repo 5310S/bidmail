@@ -128,6 +128,12 @@ async function main() {
   const abc = s.listCompanies('ABC Electric')[0]
   s.saveCompany({ id: abc.id, prequalified: true, certifications: 'MBE', glExpires: new Date(Date.now() + 200 * 86400000).toISOString(), wcExpires: new Date(Date.now() - 5 * 86400000).toISOString(), bondingLimit: 3000000, union: 'union' })
   s.updateBidder(e1.id, { companyId: abc.id })
+  // Workflow: takeoff assigned to me, a milestone owner, a pre-bid meeting date.
+  s.setTakeoff(job.id, { assignee: 'Kei Estimator', status: 'in_progress', dueAt: new Date(Date.now() + 2 * 86400000).toISOString() }, 'Kei')
+  const ms = s.getJob(job.id)!.milestones
+  s.updateMilestone(ms.find((m) => m.name === 'RFI deadline')!.id, { owner: 'Kei Estimator' }, 'Kei')
+  s.updateMilestone(ms.find((m) => m.name === 'Pre-bid meeting')!.id, { dueAt: ago(-24) }, 'Kei')
+  s.updateMilestone(ms.find((m) => m.name === 'Bid documents received')!.id, { dueAt: ago(7 * 24), doneAt: ago(7 * 24) }, 'Kei')
   s.close()
   const pdfDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bidmail-pdf-'))
   const errors: string[] = []
@@ -325,6 +331,65 @@ async function main() {
   await shot('25-team-host')
   await page.locator('.tabs button', { hasText: 'About & Updates' }).click()
   await shot('26-about')
+
+  // ---- bid workflow: custom step (attributed), timeline, progress board, my tasks ----
+  const jobCall = (method: string, args: unknown[]) => page.evaluate(([m, a]) => window.bidmail.invoke('bid:call', m, a), [method, args] as const)
+  await page.locator('.tabs button', { hasText: 'Bid Workflow' }).click()
+  await page.locator('input[placeholder^="Add a step"]').fill('Scope review call')
+  await page.locator('button', { hasText: 'Add step' }).click()
+  await page.locator('button', { hasText: 'Save for the team' }).click()
+  await page.waitForSelector('text=changed by Kei Estimator')
+  await shot('27-workflow-settings')
+
+  await page.locator('.side-job', { hasText: 'Riverside' }).click()
+  await page.waitForSelector('.trade-card')
+  await page.locator('.tabs button', { hasText: 'Timeline' }).click()
+  await page.waitForSelector('.tl-ms')
+  await page.locator('.tl-toggle', { hasText: 'Electrical' }).click()
+  await sleep(400)
+  await shot('28-timeline')
+  const pre = page.locator('.tl-ms', { hasText: 'Pre-bid meeting' })
+  const before2 = (await jobCall('getJob', [job.id]) as any).milestones.find((m: any) => m.name === 'Pre-bid meeting').dueAt
+  const box = (await pre.locator('.tl-diamond').boundingBox())!
+  const dayPx = await page.evaluate(() => {
+    const days = document.querySelectorAll('.tl-scale .tl-day')
+    return (days[1] as HTMLElement).offsetLeft - (days[0] as HTMLElement).offsetLeft
+  })
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + dayPx, box.y + box.height / 2, { steps: 5 })
+  await page.mouse.move(box.x + box.width / 2 + dayPx * 2, box.y + box.height / 2, { steps: 5 })
+  await page.mouse.up()
+  await sleep(800)
+  const after2 = (await jobCall('getJob', [job.id]) as any).milestones.find((m: any) => m.name === 'Pre-bid meeting')
+  const movedDays = Math.round((Date.parse(after2.dueAt) - Date.parse(before2)) / 86400000)
+  if (movedDays !== 2) throw new Error('dragging the milestone moved it ' + movedDays + ' days')
+  if (after2.updatedBy !== 'Kei Estimator') throw new Error('milestone change not attributed: ' + after2.updatedBy)
+  console.log('timeline ok: milestone dragged 2 days, changed by', after2.updatedBy)
+
+  await page.locator('.tabs button', { hasText: 'Progress Board' }).click()
+  await page.waitForSelector('.kan-col')
+  if (!(await page.locator('.kan-head', { hasText: 'Scope review call' }).count())) throw new Error('custom step column missing')
+  await shot('29-progress-board')
+  await page.locator('.kanban').evaluate((el) => (el.scrollLeft = el.scrollWidth))
+  const card = page.locator('.kan-card', { hasText: 'Hill Country Interiors' })
+  await card.dragTo(page.locator('.kan-col', { has: page.locator('.kan-head', { hasText: 'Scope review call' }) }))
+  await sleep(800)
+  const hill = (await jobCall('getJob', [job.id]) as any).trades.flatMap((t: any) => t.bidders).find((b: any) => b.companyName === 'Hill Country Interiors')
+  const wf = (await jobCall('getWorkflow', [])) as any
+  const scopeId = wf.steps.find((x: any) => x.name === 'Scope review call').id
+  if (!hill.steps[scopeId] || hill.steps[scopeId].by !== 'Kei Estimator') throw new Error('drag did not tick the custom step with a name')
+  await page.locator('.kan-card', { hasText: 'Hill Country Interiors' }).click()
+  await page.waitForSelector('.step-list')
+  await shot('30-card-checklist')
+  await page.keyboard.press('Escape')
+  console.log('board ok: dragging a card ticked "Scope review call" by Kei Estimator')
+
+  await page.locator('.side-item', { hasText: 'Today' }).click()
+  await page.waitForSelector('text=My tasks')
+  const myTakeoff = page.locator('.today-section tr', { hasText: 'Takeoff' })
+  if (!(await myTakeoff.count())) throw new Error('takeoff missing from My tasks')
+  await shot('31-my-tasks')
 
   await app.close()
   await new Promise((r) => smtp.close(r))

@@ -1,7 +1,9 @@
 // Today: everything across open jobs that needs attention - follow-ups due, trades short on prices,
 // bids due this week, and addenda that haven't reached every bidder.
 import { useState } from 'react'
-import type { TodayFollowUp } from '../../../shared/types'
+import type { TodayFollowUp, TodayTask } from '../../../shared/types'
+import { TAKEOFF_STATUS_LABELS, TakeoffStatus } from '../../../shared/types'
+import { useMe } from '../jobs/workflow'
 import { bid } from '../api'
 import { useApp } from '../state'
 import { Icon } from '../components/Icon'
@@ -11,6 +13,8 @@ import { cx, dueInfo, fmtDateTime, fmtFullDate } from '../util'
 export function TodayView() {
   const { today, go, toast, compose, settings, updateSettings } = useApp()
   const [done, setDone] = useState<Set<string>>(new Set())
+  const [mineOnly, setMineOnly] = useState(true)
+  const me = useMe()
   if (!today) return <div className="page"><Empty icon="clock" title="Loading..." /></div>
 
   const act = async (f: TodayFollowUp, action: 'follow_up_call' | 'will_bid' | 'declined') => {
@@ -33,7 +37,19 @@ export function TodayView() {
   const followUps = today.followUps.filter((f) => !done.has(f.bidderId))
   const byJob = new Map<string, TodayFollowUp[]>()
   for (const f of followUps) byJob.set(f.jobId, [...(byJob.get(f.jobId) ?? []), f])
-  const nothing = !followUps.length && !today.shortTrades.length && !today.dueSoon.length && !today.addenda.length
+  const isMine = (t: TodayTask) => !!t.owner && t.owner.trim().toLowerCase() === me.trim().toLowerCase()
+  const tasks = (today.tasks ?? []).filter((t) => (mineOnly ? isMine(t) : true)).filter((t) => t.owner || !mineOnly)
+  const unassigned = (today.tasks ?? []).filter((t) => !t.owner && t.kind === 'takeoff')
+  const finishTask = async (t: TodayTask) => {
+    try {
+      if (t.kind === 'takeoff') await bid.setTakeoff(t.jobId, { status: 'done' })
+      else await bid.updateMilestone(t.id, { doneAt: new Date().toISOString() })
+      toast(`Done: ${t.title} (${t.jobName})`, 'success')
+    } catch (e: any) {
+      toast(e.message, 'error')
+    }
+  }
+  const nothing = !followUps.length && !today.shortTrades.length && !today.dueSoon.length && !today.addenda.length && !tasks.length
 
   return (
     <div className="page today-page">
@@ -54,6 +70,42 @@ export function TodayView() {
       </div>
 
       {nothing && <Empty icon="check" title="You're all caught up">No follow-ups due, every trade has prices coming, and every addendum has gone out.</Empty>}
+
+      <section className="today-section">
+        <h2>
+          <Icon name="users" /> {mineOnly ? 'My tasks' : 'Everyone\'s tasks'} {tasks.length > 0 && <span className="count-pill">{tasks.length}</span>}
+          <span className="seg small" style={{ marginLeft: 12 }}>
+            <button className={mineOnly ? 'on' : ''} onClick={() => setMineOnly(true)}>Mine ({me})</button>
+            <button className={!mineOnly ? 'on' : ''} onClick={() => setMineOnly(false)}>Everyone</button>
+          </span>
+        </h2>
+        {tasks.length === 0 ? (
+          <p className="muted">{mineOnly ? `Nothing is assigned to ${me}. Assign takeoffs in a job's header and milestones on its Timeline.` : 'No open takeoffs or milestones.'}</p>
+        ) : (
+          <table className="data-table compact">
+            <tbody>
+              {tasks.map((t) => {
+                const overdue = t.dueAt && new Date(t.dueAt).getTime() < Date.now()
+                return (
+                  <tr key={t.kind + t.id}>
+                    <td><Icon name={t.kind === 'takeoff' ? 'edit' : 'calendar'} size={15} /> <b>{t.title}</b>{t.kind === 'takeoff' && <span className="muted small"> · {TAKEOFF_STATUS_LABELS[t.status as TakeoffStatus] ?? t.status}</span>}</td>
+                    <td>{t.jobName}</td>
+                    <td className={cx('nowrap', overdue && 'err')}>{t.dueAt ? `${overdue ? 'Overdue: ' : 'Due '}${fmtDateTime(t.dueAt)}` : <span className="muted">no date</span>}</td>
+                    {!mineOnly && <td>{t.owner || <span className="muted">unassigned</span>}</td>}
+                    <td className="row-actions">
+                      <Button small kind="primary" icon="check" onClick={() => finishTask(t)}>Done</Button>
+                      <Button small onClick={() => go({ kind: 'job', jobId: t.jobId, tab: t.kind === 'takeoff' ? undefined : 'timeline' })}>Open</Button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+        {mineOnly && unassigned.length > 0 && (
+          <p className="warn-text small">{unassigned.length} open job{unassigned.length === 1 ? ' has' : 's have'} no one assigned to the takeoff: {unassigned.map((t) => t.jobName).join(', ')}</p>
+        )}
+      </section>
 
       {today.dueSoon.length > 0 && (
         <section className="today-section">

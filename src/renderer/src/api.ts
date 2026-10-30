@@ -5,7 +5,7 @@ import type {
 } from '../../shared/ipc'
 import type {
   Activity, Addendum, AuditEntry, Bidder, BidderAction, BidderActionInput, Company, CompanyWithStats, EmailMatch, FileMeta, Job,
-  JobDetail, JobSummary, TeamUser, Template, TodaySummary, Trade
+  JobDetail, JobSummary, Milestone, Takeoff, TeamUser, Template, TodaySummary, Trade, WorkflowConfig
 } from '../../shared/types'
 import type { MailRule } from '../../shared/rules'
 
@@ -51,7 +51,15 @@ export const bid = {
   listFiles: (jobId: string) => call<FileMeta[]>('listFiles', jobId),
   deleteFile: (id: string) => call('deleteFile', id),
   todaySummary: (days: number) => call<TodaySummary>('todaySummary', days),
-  listAudit: (jobId?: string | null, limit = 300) => call<AuditEntry[]>('listAudit', jobId ?? null, limit)
+  listAudit: (jobId?: string | null, limit = 300) => call<AuditEntry[]>('listAudit', jobId ?? null, limit),
+  getWorkflow: () => call<WorkflowConfig>('getWorkflow'),
+  saveWorkflow: (cfg: WorkflowConfig) => call<WorkflowConfig>('saveWorkflow', cfg),
+  addMilestone: (jobId: string, data: Partial<Milestone>) => call<Milestone>('addMilestone', jobId, data),
+  updateMilestone: (id: string, data: Partial<Milestone>) => call<Milestone>('updateMilestone', id, data),
+  deleteMilestone: (id: string) => call('deleteMilestone', id),
+  applyMilestoneTemplate: (jobId: string) => call<Milestone[]>('applyMilestoneTemplate', jobId),
+  setTakeoff: (jobId: string, patch: Partial<Takeoff>) => call<Takeoff>('setTakeoff', jobId, patch),
+  setBidderStep: (bidderId: string, stepId: string, done: boolean, at?: string) => call<Bidder>('setBidderStep', bidderId, stepId, done, at)
 }
 
 export const files = {

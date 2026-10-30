@@ -16,9 +16,131 @@ export interface Job {
   status: JobStatus
   /** Bid alternates defined by the bid documents (Alternate 1, 2...). accepted = include in leveled totals. */
   alternates: JobAlternate[]
+  /** One takeoff per job: who is doing it, how far along, and when it's due. */
+  takeoff: Takeoff
   createdAt: string
   updatedAt: string
   updatedBy: string
+}
+
+export type TakeoffStatus = 'not_started' | 'in_progress' | 'done' | 'checked'
+
+export interface Takeoff {
+  assignee: string
+  status: TakeoffStatus
+  dueAt: string | null
+  notes: string
+  updatedBy: string
+  updatedAt: string | null
+}
+
+export const TAKEOFF_STATUS_LABELS: Record<TakeoffStatus, string> = {
+  not_started: 'Not started',
+  in_progress: 'In progress',
+  done: 'Done',
+  checked: 'Checked'
+}
+
+export const EMPTY_TAKEOFF: Takeoff = { assignee: '', status: 'not_started', dueAt: null, notes: '', updatedBy: '', updatedAt: null }
+
+/** A date on the job's timeline: pre-bid meeting, RFI deadline, sub bids due... */
+export interface Milestone {
+  id: string
+  jobId: string
+  name: string
+  dueAt: string | null
+  doneAt: string | null
+  owner: string
+  notes: string
+  sortOrder: number
+  updatedBy: string
+  updatedAt: string
+}
+
+/**
+ * One step of the team's bidding process for each company. Built-in kinds are ticked automatically
+ * (sending the invitation ticks "drawings_sent", saving a quote ticks "filed"); 'custom' steps are
+ * checkmarks anyone can tick.
+ */
+export type WorkflowStepKind = 'drawings_sent' | 'follow_up' | 'will_bid' | 'price_received' | 'filed' | 'custom'
+
+export interface WorkflowStep {
+  id: string
+  name: string
+  kind: WorkflowStepKind
+  enabled: boolean
+  changedBy: string
+  changedAt: string
+}
+
+export interface MilestoneTemplate {
+  id: string
+  name: string
+  /** Default date: this many days before the bid due date (0 = same day). null = no default date. */
+  daysBeforeBidDue: number | null
+  changedBy: string
+  changedAt: string
+}
+
+/** The team's shared, customizable process. Anyone can change it; every change carries their name. */
+export interface WorkflowConfig {
+  steps: WorkflowStep[]
+  milestones: MilestoneTemplate[]
+  updatedBy: string
+  updatedAt: string
+}
+
+export const DEFAULT_WORKFLOW: WorkflowConfig = {
+  steps: [
+    { id: 'drawings_sent', name: 'Emailed drawings', kind: 'drawings_sent', enabled: true, changedBy: '', changedAt: '' },
+    { id: 'follow_up', name: 'Called / followed up', kind: 'follow_up', enabled: true, changedBy: '', changedAt: '' },
+    { id: 'will_bid', name: 'Confirmed bidding', kind: 'will_bid', enabled: true, changedBy: '', changedAt: '' },
+    { id: 'price_received', name: 'Price received', kind: 'price_received', enabled: true, changedBy: '', changedAt: '' },
+    { id: 'filed', name: 'Quote filed', kind: 'filed', enabled: true, changedBy: '', changedAt: '' }
+  ],
+  milestones: [
+    { id: 'docs', name: 'Bid documents received', daysBeforeBidDue: null, changedBy: '', changedAt: '' },
+    { id: 'invites', name: 'Invitations out', daysBeforeBidDue: 10, changedBy: '', changedAt: '' },
+    { id: 'prebid', name: 'Pre-bid meeting', daysBeforeBidDue: null, changedBy: '', changedAt: '' },
+    { id: 'rfi', name: 'RFI deadline', daysBeforeBidDue: 5, changedBy: '', changedAt: '' },
+    { id: 'takeoff', name: 'Takeoff complete', daysBeforeBidDue: 4, changedBy: '', changedAt: '' },
+    { id: 'subs', name: 'Sub bids due', daysBeforeBidDue: 1, changedBy: '', changedAt: '' }
+  ],
+  updatedBy: '',
+  updatedAt: ''
+}
+
+/** Who ticked a step, and when. */
+export interface StepMark {
+  at: string
+  by: string
+}
+
+/** Done/not done for one step on one company, with who and when. */
+export function stepState(b: Bidder, step: WorkflowStep, files: FileMeta[]): (StepMark & { done: true }) | { done: false } {
+  const mark = (at: string | null | undefined, by?: string): (StepMark & { done: true }) | { done: false } =>
+    at ? { done: true, at, by: by ?? '' } : { done: false }
+  switch (step.kind) {
+    case 'drawings_sent': return mark(b.drawingsSentAt, b.stepLog.drawings_sent?.by)
+    case 'follow_up': return mark(b.lastFollowUpAt, b.stepLog.follow_up?.by)
+    case 'will_bid': return mark(b.willBidAt ?? (b.priceReceivedAt ? b.priceReceivedAt : null), b.stepLog.will_bid?.by ?? b.stepLog.price_received?.by)
+    case 'price_received': return mark(b.priceReceivedAt, b.stepLog.price_received?.by)
+    case 'filed': {
+      if (b.steps.filed) return mark(b.steps.filed.at, b.steps.filed.by)
+      const f = files.filter((x) => x.bidderId === b.id).sort((x, y) => x.createdAt.localeCompare(y.createdAt))[0]
+      return f ? mark(f.createdAt, f.createdBy) : { done: false }
+    }
+    default: return mark(b.steps[step.id]?.at, b.steps[step.id]?.by)
+  }
+}
+
+/** Index of the furthest step a company has completed (-1 = not started). */
+export function furthestStep(b: Bidder, steps: WorkflowStep[], files: FileMeta[]): number {
+  let idx = -1
+  steps.forEach((s, i) => {
+    if (stepState(b, s, files).done) idx = i
+  })
+  return idx
 }
 
 export interface JobAlternate {
@@ -81,6 +203,10 @@ export interface Bidder {
   alternatePrices: Record<string, number | null>
   /** Scope checklist item -> included / excluded (with a plug amount to add when excluded). */
   scope: Record<string, ScopeMark>
+  /** Custom workflow step id (and 'filed') -> who ticked it and when. */
+  steps: Record<string, StepMark>
+  /** Latest activity per built-in step (drawings_sent, follow_up, will_bid, price_received): who and when. Filled by getJob. */
+  stepLog: Record<string, StepMark>
   // ---- addenda (filled by getJob) ----
   /** Addendum id -> date/time it was sent to this company. */
   addendaSent: Record<string, string>
@@ -147,6 +273,7 @@ export type ActivityType =
   | 'will_bid'
   | 'addendum_sent'
   | 'addendum_ack'
+  | 'step'
   | 'note'
   | 'cleared'
 
@@ -208,6 +335,19 @@ export interface JobDetail {
   trades: TradeWithBidders[]
   addenda: Addendum[]
   files: FileMeta[]
+  milestones: Milestone[]
+}
+
+/** Something assigned to a person: the job's takeoff, or a milestone. */
+export interface TodayTask {
+  kind: 'takeoff' | 'milestone'
+  id: string
+  jobId: string
+  jobName: string
+  title: string
+  owner: string
+  dueAt: string | null
+  status: string
 }
 
 export interface TodayFollowUp {
@@ -253,6 +393,7 @@ export interface TodaySummary {
   shortTrades: TodayShortTrade[]
   dueSoon: JobSummary[]
   addenda: TodayAddendum[]
+  tasks: TodayTask[]
   generatedAt: string
 }
 

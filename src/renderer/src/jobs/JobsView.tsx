@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { JobStatus, JOB_STATUS_LABELS } from '../../../shared/types'
+import { JobStatus, JOB_STATUS_LABELS, TAKEOFF_STATUS_LABELS } from '../../../shared/types'
 import { bid } from '../api'
 import { useApp } from '../state'
 import { Icon } from '../components/Icon'
@@ -93,6 +93,9 @@ export function JobsView() {
                 <div className="progress-row">
                   <div className="progress"><div style={{ width: pct + '%' }} /></div>
                   <span>{j.tradesCovered}/{j.tradeCount} trades covered</span>
+                </div>
+                <div className={cx('job-takeoff', `tk-${j.takeoff.status}`)}>
+                  <Icon name="edit" size={14} /> Takeoff: {j.takeoff.assignee || <i>unassigned</i>} · {TAKEOFF_STATUS_LABELS[j.takeoff.status]}
                 </div>
                 <div className="job-card-stats">
                   <span><b>{j.bidderCount}</b> companies</span>

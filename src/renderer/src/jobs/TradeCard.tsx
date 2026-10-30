@@ -11,6 +11,7 @@ import { cx, fmtDate, fmtDateTime, fmtMoney } from '../util'
 import { DrawingsCell, FollowUpCell, PriceCell } from './Checkpoints'
 import { QuoteFiles } from './QuoteFiles'
 import { TradeSettings } from './TradeSettings'
+import { StepChecklist, useWorkflow } from './workflow'
 
 export const ACTIVITY_LABELS: Record<Activity['type'], string> = {
   drawings_sent: 'Drawings sent',
@@ -21,6 +22,7 @@ export const ACTIVITY_LABELS: Record<Activity['type'], string> = {
   will_bid: 'Will bid',
   addendum_sent: 'Addendum sent',
   addendum_ack: 'Addendum acknowledged',
+  step: 'Step done',
   note: 'Note',
   cleared: 'Cleared'
 }
@@ -295,6 +297,7 @@ function BidderRow({
 function BidderDetail({ b, jobId, addenda, files, warnings, company }: { b: Bidder; jobId: string; addenda: Addendum[]; files: FileMeta[]; warnings: string[]; company: CompanyWithStats | undefined }) {
   const { toast } = useApp()
   const { data: acts } = useBidQuery(() => bid.listActivities(jobId, b.id), [b.id])
+  const { steps } = useWorkflow()
   const [f, setF] = useState({ notes: b.notes, inclusions: b.inclusions, exclusions: b.exclusions })
   const [note, setNote] = useState('')
   useEffect(() => setF({ notes: b.notes, inclusions: b.inclusions, exclusions: b.exclusions }), [b.notes, b.inclusions, b.exclusions])
@@ -340,6 +343,8 @@ function BidderDetail({ b, jobId, addenda, files, warnings, company }: { b: Bidd
         )}
       </div>
       <div className="bd-col">
+        <div className="field-label">Steps (who and when)</div>
+        <StepChecklist b={b} steps={steps} files={files} jobId={jobId} />
         <div className="field-label">History</div>
         <form
           className="note-add"
