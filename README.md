@@ -139,6 +139,17 @@ To remove the Mac first-launch warning, sign and notarize with an Apple Develope
 `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, and in `package.json` `build.mac`
 set `"identity"`, `"hardenedRuntime": true`, `"notarize": true`.
 
+## Linux (Arch)
+
+Built on any computer (no Linux needed):
+
+```
+npx electron-vite build
+npx electron-builder --linux dir --x64 --config.directories.output=release/v<version>-linux
+node scripts/package-arch.mjs
+```
+
+This makes `release/v<version>-linux/bidmail-<version>-1-x86_64.pkg.tar.zst` (install on Arch with `sudo pacman -U bidmail-<version>-1-x86_64.pkg.tar.zst`; BidMail appears in the app menu and as the `bidmail` command) and `bidmail-<version>-linux-x64.tar.gz` (any Linux: extract and run `bidmail-<version>/bidmail`). Install `libsecret` (GNOME Keyring or KWallet) so passwords are kept in the system keyring.
 ## Development
 
 ```

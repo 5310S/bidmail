@@ -115,10 +115,27 @@
         "provider": "generic",
         "url": "https://updates.invalid/bidmail"
       }
-    ]
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Office",
+      "executableName": "bidmail",
+      "icon": "build/icon.png",
+      "synopsis": "Email and bid tracking for construction estimators",
+      "maintainer": "5310S",
+      "syncDesktopName": true
+    }
   },
   "allowScripts": {
     "electron@45.1.0": true,
     "esbuild@0.28.2": true
-  }
+  },
+  "desktopName": "bidmail.desktop"
 }
