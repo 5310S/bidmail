@@ -83,16 +83,6 @@ export class LeopardService {
     return this.backend.call('linkLeopard', [jobId, { projectId: p.id, projectName: p.name, url: c.projectUrl(p.id) }])
   }
 
-  /** Creates a Leopard project from the job's details and links the job to it. */
-  async createProject(jobId: string) {
-    const d: JobDetail | null = await this.backend.call('getJob', [jobId])
-    if (!d) throw new Error('Job not found')
-    const job = d.job
-    const p = await this.use((c) =>
-      c.createProject({ name: job.name, number: job.number, location: job.location, notes: job.notes }, getSettings().leopard.email)
-    )
-    return this.backend.call('linkLeopard', [jobId, { projectId: p.id, projectName: p.name, url: this.client().projectUrl(p.id) }])
-  }
 
   /** Imports the linked project's takeoff: saves a copy, analyzes it into trade packages, syncs the takeoff card. */
   async importTakeoff(jobId: string): Promise<TakeoffAnalysisResult> {

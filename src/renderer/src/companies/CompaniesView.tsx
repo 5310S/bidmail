@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Company, CompanyWithStats, expiresSoon } from '../../../shared/types'
 import { companyWarnings } from '../jobs/TradeCard'
-import { bid, sys } from '../api'
+import { bid, sys, vendors } from '../api'
 import { useApp, useBidQuery } from '../state'
 import { Icon } from '../components/Icon'
 import { Button, Empty, Field, Modal } from '../components/ui'
@@ -86,6 +86,15 @@ export function CompaniesView() {
     }
   }
 
+  const importVendorList = async () => {
+    try {
+      const r = await vendors.import()
+      if (r) toast(`Vendor list${r.title ? ` "${r.title}"` : ''}: ${r.total} companies in ${r.trades} trades (${r.added} new, ${r.updated} updated)${r.skipped ? `, ${r.skipped} rows skipped (no email or phone)` : ''}`, 'success')
+    } catch (e: any) {
+      toast(e.message, 'error')
+    }
+  }
+
   const exportCsv = async () => {
     const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
     const d = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-US') : '')
@@ -109,7 +118,8 @@ export function CompaniesView() {
           <div className="muted">Your subcontractor & supplier directory, shared across jobs. {companies?.length ?? 0} companies.</div>
         </div>
         <span className="grow" />
-        <Button icon="upload" onClick={importCsv} title="Import from a CSV/Excel export">Import CSV</Button>
+        <Button icon="upload" onClick={importVendorList} title="Your subcontractor vendor list (.xlsx): Category, Company Name, Full Name, Phone, Email, Type">Import Vendor List</Button>
+        <Button icon="upload" onClick={importCsv} title="Import from a CSV export">Import CSV</Button>
         <Button icon="download" onClick={exportCsv} disabled={!companies?.length}>Export</Button>
         <Button kind="primary" icon="plus" onClick={() => setEditing({})}>Add Company</Button>
       </div>

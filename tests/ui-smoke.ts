@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import { _electron as electron } from 'playwright-core'
 import { BidStore } from '../src/shared/store'
 import { seedLeopard, startMockLeopard } from './mockLeopard'
+import { makeXlsx, VENDOR_ROWS } from './xlsxFixture'
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const hoodiecrow = require('hoodiecrow-imap')
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -405,6 +406,13 @@ async function main() {
   await page.waitForSelector('text=Signed in to Leopard as')
   await shot('32-leopard-settings')
 
+  // The vendor list (the same file as Companies > Import Vendor List).
+  const vendorFile = path.join(data, 'Subcontractor Vendor List.xlsx')
+  fs.writeFileSync(vendorFile, makeXlsx(VENDOR_ROWS))
+  const vl = (await page.evaluate((p) => window.bidmail.invoke('vendors:import', p), vendorFile)) as any
+  if (vl.total !== 8 || vl.title !== 'Riverside MOB') throw new Error('vendor list import: ' + JSON.stringify(vl))
+  console.log('vendor list ok:', vl.total, 'companies,', vl.trades, 'trades')
+
   await page.locator('.side-job', { hasText: 'Riverside' }).click()
   await page.waitForSelector('.fact.leopard')
   await page.locator('.fact.leopard button', { hasText: 'Link project' }).click()
@@ -412,24 +420,30 @@ async function main() {
   await shot('33-leopard-link')
   await page.locator('.lp-projects button.best').click()
   await page.waitForSelector('.lp-pkg', { timeout: 20000 })
+  const concretePkg = page.locator('.lp-pkg', { hasText: 'Concrete' })
+  if ((await concretePkg.locator('.lp-cos').innerText()).trim() !== '3 companies') throw new Error('concrete companies: ' + (await concretePkg.locator('.lp-cos').innerText()))
+  await concretePkg.locator('.lp-cos').click()
+  await page.waitForSelector('.lp-company-list')
   await shot('34-leopard-import')
-  await page.locator('.modal-foot button', { hasText: /Create .* trade/ }).click()
+  await page.locator('.modal-foot button', { hasText: 'Set up 3 trades & 4 companies' }).click()
   await page.waitForSelector('text=with their takeoff quantities')
   const afterImport = (await jobCall('getJob', [job.id])) as any
   const concrete = afterImport.trades.find((t: any) => t.name === 'Concrete')
   const elec = afterImport.trades.find((t: any) => t.name === 'Electrical')
   if (!concrete || concrete.takeoffLines.length !== 2) throw new Error('Concrete trade not created from the takeoff')
-  if (elec.takeoffLines.length !== 3 || elec.bidders.length !== 3) throw new Error('Electrical not updated in place')
+  if (elec.takeoffLines.length !== 3 || elec.bidders.length !== 4) throw new Error('Electrical not updated in place, or Bright Line not added')
+  if (concrete.bidders.length !== 3 || !concrete.bidders.some((b: any) => b.email === 'dennis@anchormenllc.com')) throw new Error('vendor list companies not added to Concrete')
   if (concrete.takeoffLines[0].quantity !== 7400) throw new Error('slab quantity not worked out from the drawing: ' + concrete.takeoffLines[0].quantity)
   if (!afterImport.files.some((f: any) => f.name.startsWith('Leopard takeoff - '))) throw new Error('takeoff copy not saved with the job')
   if (![...leo.users.get('estimator@test.local')!.jobs.get('riverside01')!.files.keys()].some((k) => k.startsWith('bidmail-takeoff-'))) throw new Error('takeoff copy not saved in Leopard storage')
   console.log('leopard ok: linked, takeoff imported, trades set up, copies saved in BidMail and Leopard')
   await page.locator('.modal-foot button', { hasText: 'Send request for bids' }).click()
   await page.waitForSelector('.bulk-modal')
-  await page.locator('.bulk-quick .chip', { hasText: 'Everyone' }).click()
-  await page.locator('button', { hasText: 'Add takeoff quantities to the message' }).click()
+  if ((await page.locator('.bt-row input:checked').count()) !== 4) throw new Error('the 4 new companies should be selected')
   await page.locator('.seg button', { hasText: 'Preview' }).click()
-  await page.locator('.seg select').selectOption({ label: 'ABC Electric (Electrical)' })
+  await page.locator('.seg select').selectOption({ label: 'Island Concrete (Concrete)' })
+  await page.waitForSelector('.preview-body:has-text("Slab on grade 4\\": 7,400 SF")')
+  await page.locator('.seg select').selectOption({ label: 'Bright Line Electric (Electrical)' })
   await page.waitForSelector('.preview-body:has-text("Duplex receptacles: 6 EA")')
   await shot('35-rfb-quantities')
   await page.locator('.modal-foot button', { hasText: 'Cancel' }).click()

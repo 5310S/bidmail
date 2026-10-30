@@ -60,8 +60,23 @@ export const bid = {
   applyMilestoneTemplate: (jobId: string) => call<Milestone[]>('applyMilestoneTemplate', jobId),
   setTakeoff: (jobId: string, patch: Partial<Takeoff>) => call<Takeoff>('setTakeoff', jobId, patch),
   setBidderStep: (bidderId: string, stepId: string, done: boolean, at?: string) => call<Bidder>('setBidderStep', bidderId, stepId, done, at),
-  applyTakeoffPackages: (jobId: string, packages: { tradeName: string; csiCode: string; lines: TradeTakeoffLine[] }[]) =>
-    call<{ created: number; updated: number }>('applyTakeoffPackages', jobId, packages)
+  applyTakeoffPackages: (jobId: string, packages: { tradeName: string; csiCode: string; lines: TradeTakeoffLine[]; companyIds?: string[] }[]) =>
+    call<{ created: number; updated: number; companies: number }>('applyTakeoffPackages', jobId, packages)
+}
+
+export interface VendorImportResult {
+  file: string
+  title: string
+  added: number
+  updated: number
+  skipped: number
+  total: number
+  trades: number
+}
+
+export const vendors = {
+  /** Pick an Excel (.xlsx) or CSV vendor list and import its companies. null = cancelled. */
+  import: (filePath?: string) => invoke<VendorImportResult | null>('vendors:import', filePath)
 }
 
 export const leopardApi = {
@@ -70,7 +85,6 @@ export const leopardApi = {
   logout: () => invoke<LeopardStatus>('leopard:logout'),
   projects: () => invoke<LeopardProjectInfo[]>('leopard:projects'),
   link: (jobId: string, projectId: string | null) => invoke<Job | null>('leopard:link', jobId, projectId),
-  create: (jobId: string) => invoke<Job | null>('leopard:create', jobId),
   importTakeoff: (jobId: string) => invoke<TakeoffAnalysisResult>('leopard:import', jobId),
   open: (projectId?: string, itemId?: string) => invoke('leopard:open', projectId, itemId)
 }

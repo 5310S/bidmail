@@ -10,7 +10,7 @@ import { fillTemplate } from '../src/shared/types'
 import { mergeFields } from '../src/shared/merge'
 import { matchTrade, normalizeTakeoff, packageTakeoff, quantitiesText } from '../src/shared/takeoffAnalysis'
 import { leopardQuantity, leopardUnit } from '../src/shared/leopardQuantity'
-import { LeopardAuthError, LeopardClient, newLeopardId, safeStoredName } from '../src/main/leopard'
+import { LeopardAuthError, LeopardClient, safeStoredName } from '../src/main/leopard'
 import { LeopardService } from '../src/main/leopardService'
 import { BidBackend } from '../src/main/bidBackend'
 import { getSettings, publicSettings, saveSettings } from '../src/main/settings'
@@ -99,13 +99,13 @@ test('linking a job and applying trade packages: new trades are created, existin
 
   const packages = packageTakeoff(normalizeTakeoff(SAMPLE_TAKEOFF)).filter((p) => p.tradeName !== 'Unassigned')
   const r = s.call('applyTakeoffPackages', [job.id, packages.map((p) => ({ tradeName: p.tradeName, csiCode: p.csiCode, lines: p.lines }))], 'Pat')
-  assert.deepEqual(r, { created: 2, updated: 1 }, 'Electrical matched by CSI; Concrete and Drywall are new')
+  assert.deepEqual(r, { created: 2, updated: 1, companies: 0 }, 'Electrical matched by CSI; Concrete and Drywall are new')
   const d = s.getJob(job.id)!
   const elec = d.trades.find((t) => t.name === 'Electrical')!
   assert.equal(elec.takeoffLines.length, 3)
   assert.equal(d.trades.find((t) => t.name === 'Concrete')!.takeoffLines[0].unit, 'SF')
   // Re-applying updates instead of duplicating.
-  assert.deepEqual(s.call('applyTakeoffPackages', [job.id, packages.map((p) => ({ tradeName: p.tradeName, csiCode: p.csiCode, lines: p.lines }))], 'Pat'), { created: 0, updated: 3 })
+  assert.deepEqual(s.call('applyTakeoffPackages', [job.id, packages.map((p) => ({ tradeName: p.tradeName, csiCode: p.csiCode, lines: p.lines }))], 'Pat'), { created: 0, updated: 3, companies: 0 })
   assert.equal(s.getJob(job.id)!.trades.length, 3)
   const audit = s.listAudit(job.id).map((a) => a.summary)
   assert.ok(audit.some((a) => /Set up 3 trade/.test(a)), audit.join(' | '))
@@ -150,11 +150,7 @@ test('Leopard client: cookie sign-in, Origin on changes, projects, takeoff, stor
     const stored = await c.putFile('riverside01', 'bidmail takeoff.json', '{"a":1}', 'application/json')
     assert.equal(m.users.get(email)!.jobs.get('riverside01')!.files.get(stored)!.toString(), '{"a":1}')
 
-    assert.match(newLeopardId(), /^[a-z0-9]{4,40}$/)
     assert.equal(c.projectUrl('riverside01', 'i3'), m.url + '/?job=riverside01&item=i3')
-    const created = await c.createProject({ name: 'New School', number: '25-001' }, email)
-    assert.match(created.id, /^[a-z0-9]{4,40}$/, 'an id Leopard accepts')
-    assert.equal(m.users.get(email)!.jobs.get(created.id)!.job.name, 'New School')
 
     m.quota = 100
     await assert.rejects(() => c.putFile('riverside01', 'big.bin', Buffer.alloc(500)), /storage is full/)
@@ -216,13 +212,7 @@ test('importing a takeoff saves a copy with the job and in Leopard storage, then
 
     const chosen = r.packages.filter((p) => p.tradeName !== 'Unassigned')
     const applied = await backend.call('applyTakeoffPackages', [job.id, chosen.map((p) => ({ tradeName: p.tradeName, csiCode: p.csiCode, lines: p.lines }))])
-    assert.deepEqual(applied, { created: 3, updated: 0 })
-
-    // A project created from the job is linked right away.
-    const job2 = await backend.call('createJob', [{ name: 'Fire Station 3', number: '25-010', location: 'Shelbyville' }])
-    const linked = await svc.createProject(job2.id)
-    assert.equal(linked.leopard.projectName, 'Fire Station 3')
-    assert.equal([...m.users.get(email)!.jobs.values()].find((j) => j.job.name === 'Fire Station 3')!.job.location, 'Shelbyville')
+    assert.deepEqual(applied, { created: 3, updated: 0, companies: 0 })
 
     // An expired Leopard sign-in clears the saved cookie so BidMail asks again.
     m.sessions.clear()

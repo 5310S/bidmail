@@ -57,23 +57,17 @@ BidMail to Applications. It is not notarized by Apple yet: the first time, **rig
   saving a quote file.
 - **Today > My tasks**: takeoffs and milestones assigned to you (or everyone), with Done buttons.
 
-## Leopard takeoff (Settings > Leopard)
+## Leopard takeoff → request-for-bid emails
 
-BidMail connects to [Leopard](https://leopard.5310s.com), the team's web takeoff software, using your Leopard account.
+What BidMail does with Leopard: download the takeoff done in Leopard, analyze it by trade, and set up the request-for-bid emails to the companies in your vendor list.
 
-- **Sign in** under Settings > Leopard with the same email as one of your mail accounts, or a separate Leopard email, plus your Leopard password. BidMail keeps only Leopard's sign-in (encrypted on this computer, never your password). Each person signs in with their own Leopard account. The tab shows how much of the account's 10 GB storage is used.
-- **Link a job** to its Leopard project from the Leopard box in the job header. The closest match by name or job number is suggested, or *Create "job name" in Leopard* makes a new project from the job's name, number and location.
-- **Import takeoff** gets the project's saved takeoff and:
-  - saves a copy with the job's files (`Leopard takeoff - <date>.json` and a `quantities.csv`), shared with the team, and a summary in the Leopard project's storage (`bidmail-takeoff-<date>.json`);
-  - groups the items into trades, using each item's trade in Leopard, or its CSI code;
-  - lets you pick which trades to create or update. Takeoff trades are matched to the job's trades by name ("Drywall" goes to "Drywall & Framing") or CSI code, and each trade keeps its quantities;
-  - fills in the takeoff card: Leopard's estimator becomes who's doing the takeoff, and the status moves to In progress.
-- **Request-for-bid emails** can include each trade's quantities with `{{takeoff_quantities}}` (Insert field > Takeoff quantities, or the *Add takeoff quantities to the message* button in the send window). Each company gets only its own trade's list.
-- The **Takeoff Quantities** tab on a job lists the imported quantities by trade.
+1. **Sign in to Leopard** (Settings > Leopard) with the same email as one of your mail accounts, or a separate Leopard email, plus your Leopard password. BidMail keeps only Leopard's sign-in (encrypted on this computer), never your password.
+2. **Import your vendor list** (Companies > Import Vendor List): your Excel sheet (.xlsx, or CSV) with columns like *Category, Company Name, Full Name, Business Phone, Email, Type*. The header row is found automatically, even below a title row. Each company's Category becomes its trades ("Concrete/Excavation" means it bids Concrete and Excavation). Type fills MBE/WBE/DBE and Union. Re-importing updates the companies already there.
+3. **Link the job** to its Leopard project (Leopard box in the job header). The closest match by name or job number is suggested.
+4. **Import takeoff.** BidMail downloads the takeoff, saves a copy with the job files and in the Leopard project's storage, and works out the quantities the way Leopard's estimate does. Then it groups the items by trade (each item's trade in Leopard, or its CSI code). For every trade it lists the companies from your vendor list whose Category covers that trade: "Concrete" picks Concrete, Concrete/Excavation and Demo/Concrete companies (typos like "Contrete" too), but not Epoxy/Polished Concrete. Uncheck any or add others, then **Set up**: the trades get their quantities, and the companies are added to them.
+5. **Send request for bids.** The companies that haven't been emailed are selected, and each email includes the quantities for that company's own trade (`{{takeoff_quantities}}`).
 
-Quantities are worked out the way Leopard's estimate does: from each measured shape, using its sheet's scale (or its detail region's), minus cut-outs. The measure set on the item is used, such as area, length, wall area (× height), roof area (pitch), volume or count, and a quantity typed in Leopard wins. Items not measured yet, or measured only on sheets with no scale, come in without a quantity and are flagged in the import window.
-
-Links from BidMail (the arrow on the Leopard box, and next to each takeoff item) open the project in Leopard, zoomed to the item. This works once your browser's Leopard is signed in and has the project.
+The **Takeoff Quantities** tab on a job lists the imported quantities by trade. Items not measured yet, or measured only on sheets with no scale, come in without a quantity and are flagged. Links next to each item open it in Leopard (once your browser's Leopard is signed in and has the project).
 ## Email
 - Text size A-/A+, **Simple** view, pictures blocked until allowed, conversations (toggle **Conversations**).
 - Select several: Ctrl/Cmd+click, Shift+click, Ctrl/Cmd+A or checkboxes, then read/unread, flag, archive, move, delete.

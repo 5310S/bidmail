@@ -749,3 +749,8 @@ input.money { width: 130px; padding: 4px 8px; text-align: right; font-variant-nu
 
 .icon-link { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; vertical-align: middle; }
 .icon-link:hover { color: var(--accent); }
+.lp-cos { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-strong); background: var(--panel); color: inherit; border-radius: 14px; padding: 3px 10px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.lp-cos:hover { border-color: var(--accent); }
+.lp-cos.none { color: var(--amber); border-color: var(--amber); }
+.lp-company-list { display: flex; flex-direction: column; gap: 6px; padding: 8px 14px 12px 40px; border-top: 1px solid var(--border); }
+.lp-company-list select { max-width: 420px; margin-top: 4px; }

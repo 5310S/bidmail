@@ -896,14 +896,28 @@ export class BidStore {
   }
 
   /**
-   * Applies an analyzed takeoff: creates trades that don't exist yet and stores each trade's quantities
-   * (used by {{takeoff_quantities}} in request-for-bid emails). Trades are matched by name, then CSI code.
+   * Applies an analyzed takeoff: creates trades that don't exist yet, stores each trade's quantities
+   * (used by {{takeoff_quantities}} in request-for-bid emails), and adds the companies chosen from the vendor
+   * list to each trade (skipping ones already on it). Trades are matched by name, then CSI code.
    */
-  applyTakeoffPackages(jobId: string, packages: { tradeName: string; csiCode: string; lines: TradeTakeoffLine[] }[], userName = '') {
+  applyTakeoffPackages(jobId: string, packages: { tradeName: string; csiCode: string; lines: TradeTakeoffLine[]; companyIds?: string[] }[], userName = '') {
     if (!this.get('SELECT id FROM jobs WHERE id = ?', jobId)) throw new Error('Job not found')
     const ts = now()
     let created = 0
     let updated = 0
+    let companies = 0
+    const addCompanies = (tradeId: string, ids: string[] = []) => {
+      const onTrade = this.all('SELECT company_id, lower(email) AS email FROM bidders WHERE trade_id = ?', tradeId)
+      for (const cid of ids) {
+        const c = this.get('SELECT * FROM companies WHERE id = ?', cid)
+        if (!c) continue
+        const email = String(c.email ?? '').toLowerCase()
+        if (onTrade.some((b) => b.company_id === cid || (email && b.email === email))) continue
+        this.insertBidder(jobId, tradeId, { companyId: cid, companyName: c.name, contactName: c.contact_name ?? '', email: c.email ?? '', phone: c.phone ?? '' })
+        onTrade.push({ company_id: cid, email })
+        companies++
+      }
+    }
     this.tx(() => {
       const trades = this.all('SELECT id, name, csi_code FROM trades WHERE job_id = ?', jobId)
       let order = Number(this.get('SELECT COALESCE(MAX(sort_order), 0) AS m FROM trades WHERE job_id = ?', jobId)?.m ?? 0)
@@ -912,18 +926,22 @@ export class BidStore {
         const match = matchTrade(p, trades.map((t) => ({ id: String(t.id), name: String(t.name), csiCode: String(t.csi_code ?? '') })))
         if (match) {
           this.run('UPDATE trades SET takeoff_lines = ?, updated_at = ? WHERE id = ?', lines, ts, match.id)
+          addCompanies(match.id, p.companyIds)
           updated++
         } else {
+          const tradeId = randomUUID()
           this.run(
             'INSERT INTO trades(id, job_id, name, csi_code, status, notes, sort_order, takeoff_lines, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
-            randomUUID(), jobId, p.tradeName, p.csiCode ?? '', 'auto', '', ++order, lines, ts, ts
+            tradeId, jobId, p.tradeName, p.csiCode ?? '', 'auto', '', ++order, lines, ts, ts
           )
+          trades.push({ id: tradeId, name: p.tradeName, csi_code: p.csiCode ?? '' })
+          addCompanies(tradeId, p.companyIds)
           created++
         }
       }
     })
     this.bump()
-    return { created, updated }
+    return { created, updated, companies }
   }
 
   // ---------- custom workflow steps on a company ----------
@@ -1310,7 +1328,10 @@ export class BidStore {
         return { summary: `Takeoff: ${parts.join(', ')}`, jobId: a[0] }
       }
       case 'linkLeopard': return { summary: a[1] ? `Linked to Leopard project "${a[1].projectName ?? a[1].projectId}"` + (a[1].takeoffImportedAt ? ' and imported the takeoff' : '') : 'Unlinked the Leopard project', jobId: a[0] }
-      case 'applyTakeoffPackages': return { summary: `Set up ${(a[1] ?? []).length} trade(s) from the Leopard takeoff`, jobId: a[0] }
+      case 'applyTakeoffPackages': {
+        const n = (a[1] ?? []).reduce((s: number, p: any) => s + (p.companyIds?.length ?? 0), 0)
+        return { summary: `Set up ${(a[1] ?? []).length} trade(s) from the Leopard takeoff` + (n ? ` with ${n} compan${n === 1 ? 'y' : 'ies'} from the vendor list` : ''), jobId: a[0] }
+      }
       case 'setBidderStep': {
         const b = bidder(a[0])
         const step = this.getWorkflow().steps.find((s) => s.id === a[1])?.name ?? a[1]

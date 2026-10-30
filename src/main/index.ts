@@ -15,6 +15,8 @@ import { Updater } from './updater'
 import { publishInstaller } from './updatesFeed'
 import { fetchCertificate } from './net'
 import { LeopardService } from './leopardService'
+import { readXlsx } from './xlsx'
+import { csvRows, parseVendorList } from '../shared/vendorList'
 import { AccountSaveInput, AppSettings, ComposeData, MailAccount, MessageSummary, PickedFile, TeamSettings } from '../shared/ipc'
 import type { MailRule } from '../shared/rules'
 
@@ -113,10 +115,35 @@ function registerIpc() {
   handle('leopard:logout', () => leopard.logout())
   handle('leopard:projects', () => leopard.projects())
   handle('leopard:link', (jobId: string, projectId: string | null) => leopard.link(jobId, projectId))
-  handle('leopard:create', (jobId: string) => leopard.createProject(jobId))
   handle('leopard:import', (jobId: string) => leopard.importTakeoff(jobId))
   handle('leopard:open', (projectId?: string, itemId?: string) => shell.openExternal(leopard.openUrl(projectId, itemId)))
-  // settings
+
+  // the vendor list: an Excel sheet of subcontractors by trade, imported into Companies
+  handle('vendors:import', async (filePath?: string) => {
+    let p = filePath
+    if (!p) {
+      const r = await dialog.showOpenDialog(win!, { title: 'Choose your vendor list', properties: ['openFile'], filters: [{ name: 'Vendor list', extensions: ['xlsx', 'csv'] }] })
+      if (r.canceled || !r.filePaths[0]) return null
+      p = r.filePaths[0]
+    }
+    const ext = path.extname(p).toLowerCase()
+    if (ext === '.xls') throw new Error('This is an old-style Excel file (.xls). Open it in Excel and save it as .xlsx, then import it.')
+    let result: ReturnType<typeof parseVendorList> | null = null
+    let lastError = ''
+    const sheets = ext === '.csv' ? [{ name: 'CSV', rows: csvRows(fs.readFileSync(p, 'utf8')) }] : readXlsx(fs.readFileSync(p))
+    for (const s of sheets) {
+      try {
+        const r = parseVendorList(s.rows)
+        if (!result || r.companies.length > result.companies.length) result = r
+      } catch (e: any) {
+        lastError = e.message
+      }
+    }
+    if (!result || !result.companies.length) throw new Error(lastError || 'No companies found in that file.')
+    const res = await backend.call('importCompanies', [result.companies])
+    const trades = new Set(result.companies.flatMap((c) => (c.trades ?? '').split(',').map((t) => t.trim().toLowerCase()).filter(Boolean)))
+    return { file: path.basename(p), title: result.title, added: res.added, updated: res.updated, skipped: result.skipped, total: result.companies.length, trades: trades.size }
+  })  // settings
   handle('settings:get', () => publicSettings())
   handle('settings:save', (patch: Partial<AppSettings>) => {
     const { team: _ignored, ...rest } = patch // team changes go through the team:* handlers

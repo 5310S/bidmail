@@ -44,9 +44,6 @@ export const normalizeLeopardUrl = (u: string) => {
 /** Leopard's storage names: /^[A-Za-z0-9_-][A-Za-z0-9._-]{0,79}$/ (no leading dot, 80 characters at most). */
 export const safeStoredName = (name: string) => name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^\.+/, '').slice(0, 80) || 'file'
 
-/** A new Leopard job id, made the way Leopard makes them (/^[a-z0-9]{4,40}$/). */
-export const newLeopardId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8).padEnd(6, '0')
-
 export class LeopardClient {
   readonly base: string
   constructor(baseUrl: string, public cookie = '') {
@@ -160,28 +157,6 @@ export class LeopardClient {
     const stored = safeStoredName(name)
     await this.call('PUT', `/api/jobs/${encodeURIComponent(id)}/files/${encodeURIComponent(stored)}`, content, type)
     return stored
-  }
-
-  /** Creates a Leopard project for a bid so the takeoff can start there with the job's details. */
-  async createProject(info: { name: string; number?: string; location?: string; description?: string; notes?: string }, owner = ''): Promise<LeopardProject> {
-    const id = newLeopardId()
-    const nowMs = Date.now()
-    const job = {
-      id,
-      name: info.name,
-      number: info.number ?? '',
-      description: info.description ?? '',
-      location: info.location ?? '',
-      notes: info.notes ?? '',
-      created: nowMs,
-      opened: nowMs,
-      changed: nowMs,
-      owner,
-      files: [],
-      attachments: []
-    }
-    await this.call('PUT', `/api/jobs/${encodeURIComponent(id)}`, JSON.stringify(job))
-    return { id, name: job.name, number: job.number, location: job.location, changed: nowMs, takeoffSaved: null, fileCount: 0 }
   }
 
   /** Opens the project in Leopard (once that browser's Leopard has it: signed in, list synced). */

@@ -63,10 +63,12 @@ export function BulkSend({ detail, mode, tradeId, addendumId, onClose }: { detai
     })
   }, [runId])
 
+  // Jobs set up from a Leopard takeoff: requests for bids carry each trade's quantities.
+  const jobHasQuantities = detail.trades.some((t) => t.takeoffLines?.length)
   const applyTemplate = (t: Template) => {
     setTemplateId(t.id)
     setSubject(t.subject)
-    setBodyHtml(t.body)
+    setBodyHtml(mode === 'invite' && jobHasQuantities ? withQuantities(t.body) : t.body)
     setEditorKey((k) => k + 1)
   }
 
@@ -116,10 +118,7 @@ export function BulkSend({ detail, mode, tradeId, addendumId, onClose }: { detai
   const selectedWithQty = detail.trades.filter((t) => t.takeoffLines?.length && t.bidders.some((b) => sel.has(b.id))).length
   const hasQtyField = qtyAdded || /takeoff_quantities/.test(bodyHtml)
   const addQuantities = () => {
-    const html = currentBody()
-    // Before the sign-off when there is one, else at the end.
-    const closing = /(<p>\s*(Thanks|Thank you|Regards|Best|Sincerely)[\s\S]*)$/i
-    setBodyHtml(closing.test(html) ? html.replace(closing, '<p>{{takeoff_quantities}}</p>$1') : html + '<p>{{takeoff_quantities}}</p>')
+    setBodyHtml(withQuantities(currentBody()))
     setEditorKey((k) => k + 1)
     setQtyAdded(true)
   }
@@ -322,4 +321,11 @@ export function BulkSend({ detail, mode, tradeId, addendumId, onClose }: { detai
       </div>
     </Modal>
   )
+}
+
+/** Adds the trade's takeoff quantities to a message: before the sign-off when there is one, else at the end. */
+function withQuantities(html: string) {
+  if (/takeoff_quantities/.test(html)) return html
+  const closing = /(<p>\s*(Thanks|Thank you|Regards|Best|Sincerely)[\s\S]*)$/i
+  return closing.test(html) ? html.replace(closing, '<p>{{takeoff_quantities}}</p>$1') : html + '<p>{{takeoff_quantities}}</p>'
 }

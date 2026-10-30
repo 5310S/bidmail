@@ -2,9 +2,10 @@
 // Leopard's storage), and turn the quantities into trades for request-for-bid emails.
 import { useEffect, useState } from 'react'
 import type { LeopardProjectInfo, LeopardStatus, TakeoffAnalysisResult } from '../../../shared/ipc'
-import type { JobDetail } from '../../../shared/types'
+import type { CompanyWithStats, JobDetail } from '../../../shared/types'
+import { companiesForTrade } from '../../../shared/vendorList'
 import { fmtQty } from '../../../shared/takeoffAnalysis'
-import { bid, leopardApi } from '../api'
+import { bid, leopardApi, vendors } from '../api'
 import { useApp } from '../state'
 import { Icon } from '../components/Icon'
 import { Button, Empty, Menu, Modal, Spinner } from '../components/ui'
@@ -108,31 +109,14 @@ function LinkProjectModal({ detail, onClose, onLinked }: { detail: JobDetail; on
       setBusy(false)
     }
   }
-  const create = async () => {
-    setBusy(true)
-    try {
-      await leopardApi.create(job.id)
-      toast(`Created "${job.name}" in Leopard and linked it`, 'success')
-      onClose()
-    } catch (e: any) {
-      toast(e.message, 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
     <Modal
       title={`Link a Leopard project · ${job.name}`}
       onClose={onClose}
       width={620}
-      footer={
-        <>
-          <Button icon="plus" disabled={busy} onClick={create} title="Creates a Leopard project with this job's name, number and location">Create "{job.name}" in Leopard</Button>
-          <span className="grow" />
-          <Button onClick={onClose}>Cancel</Button>
-        </>
-      }
+      footer={<Button onClick={onClose}>Cancel</Button>}
+
     >
       {error ? (
         <div className="error-box">{error}</div>
@@ -144,7 +128,7 @@ function LinkProjectModal({ detail, onClose, onLinked }: { detail: JobDetail; on
             <Icon name="search" size={16} />
             <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a project" />
           </div>
-          {list.length === 0 && <Empty icon="grid" title="No projects in Leopard yet">Create one from this job below.</Empty>}
+          {list.length === 0 && <Empty icon="grid" title="No projects in Leopard yet">Start the takeoff in Leopard, then link it here.</Empty>}
           <ul className="lp-projects">
             {shown.map((p) => (
               <li key={p.id}>
@@ -170,25 +154,59 @@ export function ImportTakeoffModal({ detail, onClose, onSendInvites }: { detail:
   const { toast } = useApp()
   const [res, setRes] = useState<TakeoffAnalysisResult | null>(null)
   const [error, setError] = useState('')
+  const [companies, setCompanies] = useState<CompanyWithStats[] | null>(null)
   const [chosen, setChosen] = useState<Set<string>>(new Set())
-  const [open, setOpen] = useState<string>('')
-  const [applied, setApplied] = useState<{ created: number; updated: number } | null>(null)
+  const [picks, setPicks] = useState<Record<string, string[]>>({})
+  const [open, setOpen] = useState<{ trade: string; what: 'items' | 'companies' } | null>(null)
+  const [applied, setApplied] = useState<{ created: number; updated: number; companies: number } | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // Companies already on a trade of this job (by company or email) aren't added twice.
+  const onTrade = (tradeId: string | null) => {
+    const t = tradeId ? detail.trades.find((x) => x.id === tradeId) : undefined
+    return { ids: new Set(t?.bidders.map((b) => b.companyId).filter(Boolean) as string[]), emails: new Set(t?.bidders.map((b) => b.email.toLowerCase()).filter(Boolean)) }
+  }
+  const suggest = (r: TakeoffAnalysisResult, list: CompanyWithStats[]) => {
+    const out: Record<string, string[]> = {}
+    for (const p of r.packages) {
+      const have = onTrade(p.existingTradeId)
+      out[p.tradeName] = companiesForTrade(list, p.existingTradeName || p.tradeName, p.csiCode)
+        .filter((c) => c.email && !have.ids.has(c.id) && !have.emails.has(c.email.toLowerCase()))
+        .map((c) => c.id)
+    }
+    return out
+  }
   useEffect(() => {
-    leopardApi
-      .importTakeoff(detail.job.id)
-      .then((r) => {
+    Promise.all([leopardApi.importTakeoff(detail.job.id), bid.listCompanies()])
+      .then(([r, list]) => {
         setRes(r)
+        setCompanies(list)
         setChosen(new Set(r.packages.filter((p) => p.tradeName !== 'Unassigned').map((p) => p.tradeName)))
+        setPicks(suggest(r, list))
       })
       .catch((e) => setError(e.message))
   }, [])
+
+  const loadVendorList = async () => {
+    try {
+      const r = await vendors.import()
+      if (!r) return
+      const list = await bid.listCompanies()
+      setCompanies(list)
+      if (res) setPicks(suggest(res, list))
+      toast(`Vendor list: ${r.total} companies in ${r.trades} trades`, 'success')
+    } catch (e: any) {
+      toast(e.message, 'error')
+    }
+  }
 
   const apply = async () => {
     if (!res) return
     setBusy(true)
     try {
-      const list = res.packages.filter((p) => chosen.has(p.tradeName)).map((p) => ({ tradeName: p.existingTradeName || p.tradeName, csiCode: p.csiCode, lines: p.lines }))
+      const list = res.packages
+        .filter((p) => chosen.has(p.tradeName))
+        .map((p) => ({ tradeName: p.existingTradeName || p.tradeName, csiCode: p.csiCode, lines: p.lines, companyIds: picks[p.tradeName] ?? [] }))
       setApplied(await bid.applyTakeoffPackages(detail.job.id, list))
     } catch (e: any) {
       toast(e.message, 'error')
@@ -197,28 +215,29 @@ export function ImportTakeoffModal({ detail, onClose, onSendInvites }: { detail:
     }
   }
 
-  const newCount = res ? res.packages.filter((p) => chosen.has(p.tradeName) && !p.existingTradeId).length : 0
-  const updCount = res ? res.packages.filter((p) => chosen.has(p.tradeName) && p.existingTradeId).length : 0
+  const byId = new Map((companies ?? []).map((c) => [c.id, c]))
+  const selectedCompanies = res ? res.packages.filter((p) => chosen.has(p.tradeName)).reduce((n, p) => n + (picks[p.tradeName]?.length ?? 0), 0) : 0
+  const tradeCount = chosen.size
 
   return (
     <Modal
       title={`Leopard takeoff · ${detail.job.leopard?.projectName ?? ''}`}
       onClose={onClose}
-      width={820}
+      width={860}
       className="lp-import"
       footer={
         applied ? (
           <>
-            <span className="grow muted">Next: add companies to the new trades, then send the request for bids.</span>
+            <span className="grow" />
             <Button onClick={onClose}>Close</Button>
             <Button kind="primary" icon="send" onClick={onSendInvites}>Send request for bids</Button>
           </>
         ) : (
           <>
-            <span className="grow muted">{res ? `${chosen.size} of ${res.packages.length} trades selected` : ''}</span>
+            <span className="grow muted">{res ? `${tradeCount} of ${res.packages.length} trades · ${selectedCompanies} companies` : ''}</span>
             <Button onClick={onClose}>Cancel</Button>
-            <Button kind="primary" icon="check" disabled={!res || !chosen.size || busy} onClick={apply}>
-              {newCount && updCount ? `Create ${newCount} & update ${updCount} trades` : newCount ? `Create ${newCount} trade${newCount === 1 ? '' : 's'}` : `Update ${updCount} trade${updCount === 1 ? '' : 's'}`}
+            <Button kind="primary" icon="check" disabled={!res || !tradeCount || busy} onClick={apply}>
+              Set up {tradeCount} trade{tradeCount === 1 ? '' : 's'}{selectedCompanies ? ` & ${selectedCompanies} compan${selectedCompanies === 1 ? 'y' : 'ies'}` : ''}
             </Button>
           </>
         )
@@ -226,14 +245,17 @@ export function ImportTakeoffModal({ detail, onClose, onSendInvites }: { detail:
     >
       {error ? (
         <div className="error-box">{error}</div>
-      ) : !res ? (
+      ) : !res || !companies ? (
         <Spinner label="Getting the takeoff from Leopard..." />
       ) : applied ? (
         <div className="ok-box big">
           <Icon name="check" />
           <div>
-            <b>{applied.created} trade{applied.created === 1 ? '' : 's'} created, {applied.updated} updated</b> with their takeoff quantities.
-            <div>Request-for-bid emails can now include each trade's quantities: choose <b>Insert field &gt; Takeoff quantities</b>, or use the button in the send window.</div>
+            <b>
+              {applied.created + applied.updated} trade{applied.created + applied.updated === 1 ? '' : 's'} set up with their takeoff quantities
+              {applied.companies ? `, ${applied.companies} compan${applied.companies === 1 ? 'y' : 'ies'} added from your vendor list` : ''}.
+            </b>
+            <div>Next: <b>Send request for bids</b>. Each company's email lists the quantities for its own trade.</div>
           </div>
         </div>
       ) : (
@@ -247,39 +269,76 @@ export function ImportTakeoffModal({ detail, onClose, onSendInvites }: { detail:
             Saved a copy {res.bidmailFile ? 'with the job files' : ''}{res.bidmailFile && res.leopardFile ? ' and ' : ''}{res.leopardFile ? <>in Leopard storage (<span className="mono">{res.leopardFile}</span>)</> : ''}.
           </div>
           {res.warnings.map((w) => <div key={w} className="warn-box small"><Icon name="alert" size={15} /> {w}</div>)}
+          {companies.length === 0 && (
+            <div className="warn-box">
+              <Icon name="users" size={16} />
+              <span className="grow">Import your vendor list (Excel) so BidMail can pick the companies for each trade.</span>
+              <button className="link-btn" onClick={loadVendorList}>Import vendor list</button>
+            </div>
+          )}
           <div className="lp-packages">
-            {res.packages.map((p) => (
-              <div key={p.tradeName} className={cx('lp-pkg', chosen.has(p.tradeName) && 'on')}>
-                <label className="lp-pkg-head">
-                  <input
-                    type="checkbox"
-                    checked={chosen.has(p.tradeName)}
-                    onChange={(e) => {
-                      const n = new Set(chosen)
-                      e.target.checked ? n.add(p.tradeName) : n.delete(p.tradeName)
-                      setChosen(n)
-                    }}
-                  />
-                  <span className="grow">
-                    <b>{p.tradeName}</b> {p.csiCode && <span className="muted small mono">{p.csiCode}</span>}
-                    <div className="small muted">{totalsText(p.totals) || 'No quantities'} · {p.lines.length} item{p.lines.length === 1 ? '' : 's'}</div>
-                  </span>
-                  <span className={cx('chip sm', p.existingTradeId ? '' : 'new')}>{p.existingTradeId ? `Updates ${p.existingTradeName}` : p.tradeName === 'Unassigned' ? 'No trade tag' : 'New trade'}</span>
-                  <button className="link-btn small" onClick={(e) => { e.preventDefault(); setOpen(open === p.tradeName ? '' : p.tradeName) }}>{open === p.tradeName ? 'Hide' : 'Items'}</button>
-                </label>
-                {open === p.tradeName && <QtyTable lines={p.lines} projectId={res.projectId} />}
-              </div>
-            ))}
+            {res.packages.map((p) => {
+              const ids = picks[p.tradeName] ?? []
+              const isOpen = (what: 'items' | 'companies') => open?.trade === p.tradeName && open.what === what
+              const toggle = (what: 'items' | 'companies') => setOpen(isOpen(what) ? null : { trade: p.tradeName, what })
+              const others = companies.filter((c) => !ids.includes(c.id)).sort((a, b) => a.trades.localeCompare(b.trades) || a.name.localeCompare(b.name))
+              return (
+                <div key={p.tradeName} className={cx('lp-pkg', chosen.has(p.tradeName) && 'on')}>
+                  <div className="lp-pkg-head">
+                    <input
+                      type="checkbox"
+                      checked={chosen.has(p.tradeName)}
+                      onChange={(e) => {
+                        const n = new Set(chosen)
+                        e.target.checked ? n.add(p.tradeName) : n.delete(p.tradeName)
+                        setChosen(n)
+                      }}
+                    />
+                    <span className="grow">
+                      <b>{p.existingTradeName || p.tradeName}</b> {p.csiCode && <span className="muted small mono">{p.csiCode}</span>}
+                      <div className="small muted">{totalsText(p.totals) || 'No quantities'} · {p.lines.length} item{p.lines.length === 1 ? '' : 's'}</div>
+                    </span>
+                    {p.tradeName === 'Unassigned' && <span className="chip sm">No trade tag</span>}
+                    <button className={cx('lp-cos', !ids.length && 'none')} onClick={() => toggle('companies')}>
+                      <Icon name="users" size={13} /> {ids.length ? `${ids.length} compan${ids.length === 1 ? 'y' : 'ies'}` : 'No companies'}
+                    </button>
+                    <button className="link-btn small" onClick={() => toggle('items')}>{isOpen('items') ? 'Hide' : 'Items'}</button>
+                  </div>
+                  {isOpen('items') && <QtyTable lines={p.lines} projectId={res.projectId} />}
+                  {isOpen('companies') && (
+                    <div className="lp-company-list">
+                      {ids.length === 0 && <div className="muted small">No companies in your vendor list for this trade. Add one below.</div>}
+                      {ids.map((id) => {
+                        const c = byId.get(id)
+                        if (!c) return null
+                        return (
+                          <label key={id} className="check">
+                            <input type="checkbox" checked onChange={() => setPicks({ ...picks, [p.tradeName]: ids.filter((x) => x !== id) })} />
+                            <b>{c.name}</b> <span className="muted small">{c.contactName ? c.contactName + ' · ' : ''}{c.email || 'no email'} · {c.trades}{c.certifications ? ' · ' + c.certifications : ''}</span>
+                          </label>
+                        )
+                      })}
+                      {others.length > 0 && (
+                        <select value="" onChange={(e) => e.target.value && setPicks({ ...picks, [p.tradeName]: [...ids, e.target.value] })}>
+                          <option value="">+ Add a company...</option>
+                          {others.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.trades || 'no trade'})</option>)}
+                        </select>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
           <p className="muted small">
-            Trades come from each item's trade in Leopard, or its CSI code. Items without either are under "Unassigned"; tag them with a trade in Leopard and re-import.
+            Trades come from each item's trade in Leopard, or its CSI code; companies come from your vendor list by their Category.
+            {companies.length > 0 && <> <button className="link-btn small" onClick={loadVendorList}>Re-import vendor list</button></>}
           </p>
         </>
       )}
     </Modal>
   )
 }
-
 function QtyTable({ lines, projectId }: { lines: { description: string; quantity: number | null; unit: string; sheet: string; itemId?: string }[]; projectId?: string }) {
   return (
     <table className="qty-table">
