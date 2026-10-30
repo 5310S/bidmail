@@ -362,7 +362,7 @@ export function ImportTakeoffModal({ detail, onClose, onSendInvites }: { detail:
     </Modal>
   )
 }
-function QtyTable({ lines, projectId }: { lines: { description: string; quantity: number | null; unit: string; sheet: string; itemId?: string }[]; projectId?: string }) {
+function QtyTable({ lines, projectId }: { lines: { description: string; quantity: number | null; unit: string; sheet: string; itemId?: string; quantityText?: string }[]; projectId?: string }) {
   return (
     <table className="qty-table">
       <tbody>
@@ -376,7 +376,7 @@ function QtyTable({ lines, projectId }: { lines: { description: string; quantity
                 </button>
               )}
             </td>
-            <td className="num">{l.quantity == null ? <span className="muted">-</span> : fmtQty(l.quantity, '')}</td>
+            <td className="num">{l.quantity == null ? (l.quantityText ? l.quantityText : <span className="muted">-</span>) : fmtQty(l.quantity, '')}</td>
             <td>{l.unit}</td>
             <td className="muted small">{l.sheet}</td>
           </tr>

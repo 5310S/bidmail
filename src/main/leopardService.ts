@@ -60,9 +60,10 @@ export class LeopardService {
   async login(url: string, email: string, password: string): Promise<LeopardStatus> {
     if (!email.trim() || !password) throw new Error('Enter your Leopard email and password')
     const c = new LeopardClient(url)
-    await c.login(email, password)
+    // Leopard's login answer has the account and its storage: no second call needed.
+    const acct = await c.login(email, password)
     saveSettings({ leopard: { url: c.base, email: email.trim(), cookie: c.cookie } })
-    return this.status()
+    return (this.lastStatus = { url: c.base, signedIn: true, email: acct.email || email.trim(), usedBytes: acct.usedBytes, quotaBytes: acct.quotaBytes, error: '' })
   }
 
   async logout(): Promise<LeopardStatus> {
@@ -105,14 +106,15 @@ export class LeopardService {
       return {
         tradeName: p.tradeName,
         csiCode: p.csiCode,
-        lines: p.lines.map((l) => ({ description: l.description, quantity: l.quantity, unit: l.unit, sheet: l.sheet, itemId: l.itemId || undefined })),
+        lines: p.lines.map((l) => ({ description: l.description, quantity: l.quantity, unit: l.unit, sheet: l.sheet, itemId: l.itemId || undefined, ...(l.quantityText ? { quantityText: l.quantityText } : {}), ...(l.isCost ? { isCost: true } : {}) })),
         totals: p.totals,
         existingTradeId: t?.id ?? null,
         existingTradeName: t?.name ?? ''
       }
     })
     const warnings: string[] = []
-    const missing = lines.filter((l) => l.quantity == null).length
+    // A quantity typed as text in Leopard (e.g. LS) is a quantity: only the rest are missing one.
+    const missing = lines.filter((l) => l.quantity == null && !l.quantityText).length
     const unscaled = lines.filter((l) => l.issue === 'unscaled').length
     const unmeasured = missing - unscaled
     if (unscaled) warnings.push(`${unscaled} item(s) are measured only on sheets with no scale, so they have no quantity. Set the scale in Leopard and re-import.`)
@@ -122,7 +124,7 @@ export class LeopardService {
     const when = stamp()
     const json = JSON.stringify(data)
     const csv = ['Trade,CSI,Item,Quantity,Unit,Sheets']
-      .concat(packages.flatMap((p) => p.lines.map((l) => [p.tradeName, p.csiCode, l.description, l.quantity ?? '', l.unit, l.sheet].map(csvCell).join(','))))
+      .concat(packages.flatMap((p) => p.lines.map((l) => [p.tradeName, p.csiCode, l.description, l.quantity ?? l.quantityText ?? '', l.unit, l.sheet].map(csvCell).join(','))))
       .join('\r\n')
     let bidmailFile: string | null = null
     try {

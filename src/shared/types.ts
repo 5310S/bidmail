@@ -48,6 +48,10 @@ export interface TradeTakeoffLine {
   sheet: string
   /** Leopard's item id, for a link that opens Leopard on the item. */
   itemId?: string
+  /** A quantity typed in Leopard as text (e.g. LS). */
+  quantityText?: string
+  /** The estimator's cost, not a quantity: shown in BidMail, never emailed. */
+  isCost?: boolean
 }
 
 export type TakeoffStatus = 'not_started' | 'in_progress' | 'done' | 'checked'

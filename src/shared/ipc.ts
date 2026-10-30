@@ -100,7 +100,7 @@ export interface LeopardCheck {
 export interface TakeoffPackagePreview {
   tradeName: string
   csiCode: string
-  lines: { description: string; quantity: number | null; unit: string; sheet: string; itemId?: string }[]
+  lines: { description: string; quantity: number | null; unit: string; sheet: string; itemId?: string; quantityText?: string; isCost?: boolean }[]
   totals: { unit: string; quantity: number }[]
   /** The job's trade this package updates; null = a new trade gets created. */
   existingTradeId: string | null

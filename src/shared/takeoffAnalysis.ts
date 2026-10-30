@@ -1,7 +1,7 @@
 // Turns a Leopard takeoff into bid packages: items grouped by trade (CSI division), with quantity
 // totals per unit, ready to create trades and fill request-for-bid emails ({{takeoff_quantities}}).
 import { STANDARD_TRADES } from './types'
-import { leopardQuantity, leopardUnit, measuredQuantity } from './leopardQuantity'
+import { itemMeasure, leopardQuantity, leopardUnit, measuredQuantity } from './leopardQuantity'
 
 export interface TakeoffLine {
   description: string
@@ -15,6 +15,10 @@ export interface TakeoffLine {
   itemId: string
   /** Why there's no quantity: not measured yet, or measured only on sheets with no scale. */
   issue: '' | 'unmeasured' | 'unscaled'
+  /** A quantity typed in Leopard as text (e.g. `LS`): it wins, like a typed number. */
+  quantityText?: string
+  /** A cost (the item's measure is cost, in dollars): the estimator's pricing, never sent to subcontractors. */
+  isCost?: boolean
 }
 
 export interface TradePackage {
@@ -79,7 +83,9 @@ export function leopardLines(raw: any, quantityOf: QuantityFn = leopardQuantity)
         q = null
       }
       let issue: TakeoffLine['issue'] = ''
-      if (q == null) {
+      const typed = it.quantity
+      const quantityText = q == null && typeof typed === 'string' && typed.trim() ? typed.trim() : undefined
+      if (q == null && !quantityText) {
         const m = measuredQuantity(raw, it)
         issue = m.sections && m.unscaled === m.sections ? 'unscaled' : 'unmeasured'
       }
@@ -89,6 +95,8 @@ export function leopardLines(raw: any, quantityOf: QuantityFn = leopardQuantity)
         unit: leopardUnit(it).trim().toUpperCase(),
         itemId: String(it.id ?? ''),
         issue,
+        ...(quantityText ? { quantityText } : {}),
+        ...(itemMeasure(it) === 'cost' ? { isCost: true } : {}),
         csiCode: normCsi(String(it.csi ?? it.csiCode ?? '')),
         trade: String(it.trade ?? '').trim(),
         sheet: pages.map(sheetName).filter(Boolean).join(', '),
@@ -195,6 +203,7 @@ export function fmtQty(q: number | null, unit: string): string {
 }
 
 /** Plain-text quantity list for a trade, used by {{takeoff_quantities}} in request-for-bid emails. */
-export function quantitiesText(lines: Pick<TakeoffLine, 'description' | 'quantity' | 'unit' | 'sheet'>[]): string {
-  return lines.map((l) => `- ${l.description}${l.quantity == null ? '' : ': ' + fmtQty(l.quantity, l.unit)}${l.sheet ? ` (sheet ${l.sheet})` : ''}`).join('\n')
+export function quantitiesText(lines: (Pick<TakeoffLine, 'description' | 'quantity' | 'unit' | 'sheet'> & { quantityText?: string; isCost?: boolean })[]): string {
+  // Costs are the estimator's own pricing: they stay out of requests for bids.
+  return lines.filter((l) => !l.isCost).map((l) => `- ${l.description}${l.quantity == null ? (l.quantityText ? ': ' + l.quantityText : '') : ': ' + fmtQty(l.quantity, l.unit)}${l.sheet ? ` (sheet ${l.sheet})` : ''}`).join('\n')
 }
