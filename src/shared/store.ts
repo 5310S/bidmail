@@ -875,17 +875,21 @@ export class BidStore {
     const r = this.get('SELECT leopard FROM jobs WHERE id = ?', jobId)
     if (!r) throw new Error('Job not found')
     const cur = json<LeopardLink | null>(r.leopard, null)
+    // Linking a different project starts over: the earlier import belonged to the old one.
+    const same = !link?.projectId || link.projectId === cur?.projectId
+    const prev = same ? cur : null
     const next: LeopardLink | null = link
       ? {
           projectId: String(link.projectId ?? cur?.projectId ?? ''),
           projectName: link.projectName ?? cur?.projectName ?? '',
           url: link.url ?? cur?.url ?? '',
-          linkedBy: link.projectId && link.projectId !== cur?.projectId ? userName : cur?.linkedBy ?? userName,
-          linkedAt: link.projectId && link.projectId !== cur?.projectId ? now() : cur?.linkedAt ?? now(),
-          takeoffImportedAt: link.takeoffImportedAt !== undefined ? link.takeoffImportedAt : cur?.takeoffImportedAt ?? null,
-          takeoffImportedBy: link.takeoffImportedAt ? userName : cur?.takeoffImportedBy ?? '',
-          takeoffPath: link.takeoffPath !== undefined ? link.takeoffPath : cur?.takeoffPath ?? null,
-          itemCount: link.itemCount ?? cur?.itemCount ?? 0
+          linkedBy: same ? cur?.linkedBy ?? userName : userName,
+          linkedAt: same ? cur?.linkedAt ?? now() : now(),
+          takeoffImportedAt: link.takeoffImportedAt !== undefined ? link.takeoffImportedAt : prev?.takeoffImportedAt ?? null,
+          takeoffImportedBy: link.takeoffImportedAt ? userName : prev?.takeoffImportedBy ?? '',
+          takeoffPath: link.takeoffPath !== undefined ? link.takeoffPath : prev?.takeoffPath ?? null,
+          itemCount: link.itemCount ?? prev?.itemCount ?? 0,
+          takeoffSavedAt: link.takeoffSavedAt !== undefined ? link.takeoffSavedAt : prev?.takeoffSavedAt ?? null
         }
       : null
     if (next && !next.projectId) throw new Error('Choose a Leopard project')

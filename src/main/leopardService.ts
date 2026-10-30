@@ -2,9 +2,9 @@
 // project's takeoff: a copy is saved (with the job's files and in the Leopard project's storage), then the
 // takeoff is analyzed into trade packages that set up trades and request-for-bid emails.
 import { getSettings, saveSettings } from './settings'
-import { LeopardAuthError, LeopardClient, normalizeLeopardUrl } from './leopard'
+import { LeopardAuthError, LeopardClient, LeopardGoneError, normalizeLeopardUrl } from './leopard'
 import type { BidBackend } from './bidBackend'
-import type { LeopardProjectInfo, LeopardStatus, TakeoffAnalysisResult } from '../shared/ipc'
+import type { LeopardCheck, LeopardProjectInfo, LeopardStatus, TakeoffAnalysisResult } from '../shared/ipc'
 import type { JobDetail } from '../shared/types'
 import { fmtQty, matchTrade, normalizeTakeoff, packageTakeoff } from '../shared/takeoffAnalysis'
 import { leopardQuantity } from '../shared/leopardQuantity'
@@ -91,6 +91,10 @@ export class LeopardService {
     const job = d.job
     const link = job.leopard
     if (!link) throw new Error('Link this job to a Leopard project first')
+    // A project in Leopard's Recently deleted, or no longer in the account, says so instead of importing.
+    const project = (await this.use((c) => c.projects(true))).find((p) => p.id === link.projectId)
+    if (!project) throw new LeopardGoneError(`"${link.projectName}" is no longer in your Leopard account. Link the job to its project again.`)
+    if (project.deleted) throw new Error(`"${link.projectName}" is in Leopard's Recently deleted. Restore it in Leopard, or link the job to another project.`)
     const { data, saved } = await this.use((c) => c.takeoff(link.projectId))
     if (!data) throw new Error(`"${link.projectName}" has no saved takeoff in Leopard yet`)
 
@@ -144,12 +148,13 @@ export class LeopardService {
         importedBy: getSettings().userName,
         packages: packages.map((p) => ({ trade: p.tradeName, csi: p.csiCode, totals: p.totals.map((t) => fmtQty(t.quantity, t.unit)), lines: p.lines }))
       }
-      leopardFile = await this.use((c) => c.putFile(link.projectId, `bidmail-takeoff-${when.replace(' ', '-')}.json`, JSON.stringify(analysis, null, 1), 'application/json'))
+      // One file, replaced on each import (Leopard counts only the change in size against the quota).
+      leopardFile = await this.use((c) => c.putFile(link.projectId, 'bidmail-takeoff.json', JSON.stringify(analysis, null, 1), 'application/json'))
     } catch (e: any) {
       warnings.push(`Couldn't save the copy in Leopard storage: ${e?.message ?? e}`)
     }
 
-    await this.backend.call('linkLeopard', [jobId, { takeoffImportedAt: new Date().toISOString(), takeoffPath: leopardFile, itemCount: lines.length }])
+    await this.backend.call('linkLeopard', [jobId, { takeoffImportedAt: new Date().toISOString(), takeoffPath: leopardFile, itemCount: lines.length, takeoffSavedAt: saved }])
 
     // Keep the takeoff card in step: Leopard's estimator is who's doing it, and items mean it has started.
     const info = data.info ?? {}
@@ -169,6 +174,28 @@ export class LeopardService {
       leopardFile,
       warnings
     }
+  }
+
+  /** Is the job's imported takeoff still what's in Leopard? (Leopard's job list has each takeoff's save time.) */
+  async check(jobId: string): Promise<LeopardCheck> {
+    const d: JobDetail | null = await this.backend.call('getJob', [jobId])
+    const link = d?.job.leopard
+    if (!link) return { state: 'unlinked', takeoffSaved: null, message: '' }
+    if (!getSettings().leopard.cookie) return { state: 'signed_out', takeoffSaved: null, message: 'Sign in to Leopard to check for changes.' }
+    let list
+    try {
+      list = await this.use((c) => c.projects(true))
+    } catch (e: any) {
+      return { state: e instanceof LeopardAuthError ? 'signed_out' : 'offline', takeoffSaved: null, message: e?.message ?? String(e) }
+    }
+    const p = list.find((x) => x.id === link.projectId)
+    if (!p) return { state: 'gone', takeoffSaved: null, message: 'No longer in your Leopard account. Link it again.' }
+    if (p.deleted) return { state: 'deleted', takeoffSaved: p.takeoffSaved, message: "In Leopard's Recently deleted." }
+    if (!p.takeoffSaved) return { state: 'no_takeoff', takeoffSaved: null, message: 'No takeoff saved in Leopard yet.' }
+    if (!link.takeoffImportedAt) return { state: 'not_imported', takeoffSaved: p.takeoffSaved, message: '' }
+    const importedFrom = link.takeoffSavedAt ?? Date.parse(link.takeoffImportedAt)
+    const changed = p.takeoffSaved > importedFrom + 1
+    return { state: changed ? 'changed' : 'current', takeoffSaved: p.takeoffSaved, message: changed ? 'The takeoff changed in Leopard since it was imported.' : '' }
   }
 
   /** Leopard itself, or a linked project (and one of its items). */

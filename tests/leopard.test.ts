@@ -10,7 +10,7 @@ import { fillTemplate } from '../src/shared/types'
 import { mergeFields } from '../src/shared/merge'
 import { matchTrade, normalizeTakeoff, packageTakeoff, quantitiesText } from '../src/shared/takeoffAnalysis'
 import { leopardQuantity, leopardUnit } from '../src/shared/leopardQuantity'
-import { LeopardAuthError, LeopardClient, safeStoredName } from '../src/main/leopard'
+import { LeopardAuthError, LeopardClient, LeopardGoneError, safeStoredName } from '../src/main/leopard'
 import { LeopardService } from '../src/main/leopardService'
 import { BidBackend } from '../src/main/bidBackend'
 import { getSettings, publicSettings, saveSettings } from '../src/main/settings'
@@ -65,6 +65,28 @@ test('every kind of Leopard measurement', () => {
   assert.equal(leopardUnit({ kind: 'linear', unit: 'LM' }), 'LM', "the item's own unit wins")
   assert.equal(q({ id: 'a', kind: 'area', quantity: 42 }), 42)
   assert.equal(leopardQuantity({ id: 'x', kind: 'area' }, { items: [], sections: [], scales: {} }), null, 'not measured')
+})
+
+test("framing layouts match Leopard's examples (members EA, member length LF)", () => {
+  const sq = [[0, 0], [10, 0], [10, 10], [0, 10]]
+  const run = [[0, 0], [10, 0]]
+  const q = (item: any, points: any[]) => leopardQuantity(item, { items: [item], sections: [{ id: 's', itemId: item.id, page: 0, points }], scales: { 0: { sx: 1, sy: 1 } } })
+  const area = { id: 'a', kind: 'area', layout: 'joist', spacing: 2, layoutAngle: 0 }
+  assert.deepEqual([q({ ...area, measure: 'members' }, sq), q({ ...area, measure: 'memberLength' }, sq)], [6, 60], '10x10 joists at 2 ft')
+  assert.deepEqual([q({ ...area, layout: 'grid', measure: 'members' }, sq), q({ ...area, layout: 'grid', measure: 'memberLength' }, sq)], [12, 120], 'as a grid')
+  const joist = { id: 'l', kind: 'linear', layout: 'joist', spacing: 2, memberSize: 3 }
+  assert.deepEqual([q({ ...joist, measure: 'members' }, run), q({ ...joist, measure: 'memberLength' }, run)], [6, 18], 'joists along a 10 ft run, 3 ft each')
+  const beam = { id: 'l', kind: 'linear', layout: 'beam', spacing: 4 }
+  assert.deepEqual([q({ ...beam, measure: 'members' }, run), q({ ...beam, measure: 'memberLength' }, run)], [3, 12], '4 ft beam stock over 10 ft')
+  assert.equal(leopardUnit({ ...area, measure: 'members' }), 'EA')
+  assert.equal(leopardUnit({ ...beam, measure: 'memberLength' }), 'LF')
+  // hasLayout: no beams on areas, no grids on lines, a spacing is needed. Without it, the first measure is used.
+  assert.equal(q({ ...area, layout: 'beam', measure: 'members' }, sq), 100)
+  assert.equal(q({ ...joist, layout: 'grid', measure: 'members' }, run), 10)
+  assert.equal(q({ ...area, spacing: 0, measure: 'members' }, sq), 100)
+  const holed = { id: 'a', kind: 'area', layout: 'joist', spacing: 2, measure: 'memberLength' }
+  const d = { items: [holed], sections: [{ id: 's', itemId: 'a', page: 0, points: sq, holes: [[[4, 3], [6, 3], [6, 5], [4, 5]]] }], scales: { 0: { sx: 1, sy: 1 } } }
+  assert.equal(leopardQuantity(holed, d), 58, 'the one member through the 2 ft hole (at 4 ft) loses 2 ft: 60 - 2')
 })
 test("takeoff trades match the job's trades by name, CSI code, or a name that contains the other", () => {
   const trades = [{ name: 'Drywall & Framing', csiCode: '09 21 00' }, { name: 'Electrical', csiCode: '26 00 00' }, { name: 'Painting', csiCode: '' }, { name: 'Wall Painting', csiCode: '' }]
@@ -129,6 +151,7 @@ test('Leopard client: cookie sign-in, Origin on changes, projects, takeoff, stor
     await assert.rejects(() => c.login(email, 'wrong'), /Wrong email or password/)
     await assert.rejects(() => c.projects(), LeopardAuthError)
     const me = await c.login(email.toUpperCase(), password)
+    assert.ok(!m.requests.some((r) => r.path === '/api/me'), 'the login answer has the account: no extra /api/me')
     assert.equal(me.email, email)
     assert.equal(me.quotaBytes, 10 * 1024 ** 3)
     assert.ok(me.usedBytes! > 2048)
@@ -137,13 +160,15 @@ test('Leopard client: cookie sign-in, Origin on changes, projects, takeoff, stor
     assert.equal(login.origin, new URL(m.url).origin, 'Leopard checks Origin on POST')
 
     const projects = await c.projects()
-    assert.deepEqual(projects.map((p) => p.name), ['Riverside Medical Office', 'County Library Reroof'], 'most recently changed first')
+    assert.deepEqual(projects.map((p) => p.name), ['Riverside Medical Office', 'County Library Reroof'], 'most recently changed first; Recently deleted hidden')
+    assert.ok((await c.projects(true)).find((p) => p.id === 'oldjob01')!.deleted)
+    await assert.rejects(() => c.takeoff('nosuchjob1'), LeopardGoneError)
     assert.equal(projects[0].fileCount, 1)
     assert.ok(projects[0].takeoffSaved)
 
     const t = await c.takeoff('riverside01')
     assert.equal(t.data.items.length, 7)
-    assert.ok(t.saved && t.saved > 0)
+    assert.ok(t.saved && t.saved % 1 > 0.1, 'a fractional X-Saved is kept')
     assert.deepEqual(await c.takeoff('library01'), { data: null, saved: null })
 
     assert.equal(safeStoredName('bidmail takeoff 2026-10-30 1200.json'), 'bidmail-takeoff-2026-10-30-1200.json')
@@ -192,7 +217,7 @@ test('importing a takeoff saves a copy with the job and in Leopard storage, then
     assert.ok(r.warnings.some((w) => /1 item\(s\) are measured only on sheets with no scale/.test(w)), r.warnings.join(' | '))
     assert.ok(r.warnings.some((w) => /1 item\(s\) aren't measured yet/.test(w)))
     assert.equal(r.packages.find((p) => p.tradeName === 'Concrete')!.lines[0].quantity, 7400)
-    assert.ok(r.leopardFile && /^bidmail-takeoff-.*\.json$/.test(r.leopardFile), String(r.leopardFile))
+    assert.equal(r.leopardFile, 'bidmail-takeoff.json')
     const saved = JSON.parse(m.users.get(email)!.jobs.get('riverside01')!.files.get(r.leopardFile!)!.toString())
     assert.equal(saved.app, 'BidMail')
     assert.ok(saved.packages.some((p: any) => p.trade === 'Concrete'))
@@ -205,14 +230,30 @@ test('importing a takeoff saves a copy with the job and in Leopard storage, then
     assert.equal(d.job.takeoff.assignee, 'Kei', "Leopard's estimator becomes the takeoff assignee")
     assert.equal(d.job.takeoff.status, 'in_progress')
 
-    // Re-import replaces the copy instead of piling up files.
+    // Re-import replaces the copies instead of piling up files, in BidMail and in Leopard.
+    assert.equal((await svc.check(job.id)).state, 'current')
+    const rj = m.users.get(email)!.jobs.get('riverside01')!
+    rj.saved = Date.now() + 5000
+    assert.equal((await svc.check(job.id)).state, 'changed', 'saved in Leopard after the import')
     await svc.importTakeoff(job.id)
+    assert.equal((await svc.check(job.id)).state, 'current')
     d = await backend.call('getJob', [job.id])
     assert.equal(d.files.length, 2)
+    assert.deepEqual([...rj.files.keys()].filter((k) => k.startsWith('bidmail-')), ['bidmail-takeoff.json'])
+    assert.equal(d.job.leopard.takeoffSavedAt, rj.saved)
 
     const chosen = r.packages.filter((p) => p.tradeName !== 'Unassigned')
     const applied = await backend.call('applyTakeoffPackages', [job.id, chosen.map((p) => ({ tradeName: p.tradeName, csiCode: p.csiCode, lines: p.lines }))])
     assert.deepEqual(applied, { created: 3, updated: 0, companies: 0 })
+
+    // A project moved to Leopard's Recently deleted, or gone from the account.
+    rj.job.deleted = Date.now()
+    assert.equal((await svc.check(job.id)).state, 'deleted')
+    await assert.rejects(() => svc.importTakeoff(job.id), /Recently deleted/)
+    m.users.get(email)!.jobs.delete('riverside01')
+    assert.equal((await svc.check(job.id)).state, 'gone')
+    await assert.rejects(() => svc.importTakeoff(job.id), /no longer in your Leopard account/)
+    assert.ok(!(await svc.projects()).some((p) => p.id === 'oldjob01'), 'the link picker hides Recently deleted')
 
     // An expired Leopard sign-in clears the saved cookie so BidMail asks again.
     m.sessions.clear()

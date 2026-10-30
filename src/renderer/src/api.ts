@@ -1,7 +1,7 @@
 // Typed wrappers over the preload bridge.
 import type {
   AccountSaveInput, AppSettings, BulkSendInput, ComposeData, MailAccount, MailFolder, MessageDetail, MessageList,
-  LeopardProjectInfo, LeopardStatus, PickedFile, TakeoffAnalysisResult, TeamSettings, TeamStatus
+  LeopardCheck, LeopardProjectInfo, LeopardStatus, PickedFile, TakeoffAnalysisResult, TeamSettings, TeamStatus
 } from '../../shared/ipc'
 import type {
   Activity, Addendum, AuditEntry, Bidder, BidderAction, BidderActionInput, Company, CompanyWithStats, EmailMatch, FileMeta, Job,
@@ -86,6 +86,7 @@ export const leopardApi = {
   projects: () => invoke<LeopardProjectInfo[]>('leopard:projects'),
   link: (jobId: string, projectId: string | null) => invoke<Job | null>('leopard:link', jobId, projectId),
   importTakeoff: (jobId: string) => invoke<TakeoffAnalysisResult>('leopard:import', jobId),
+  check: (jobId: string) => invoke<LeopardCheck>('leopard:check', jobId),
   open: (projectId?: string, itemId?: string) => invoke('leopard:open', projectId, itemId)
 }
 

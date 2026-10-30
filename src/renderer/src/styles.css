@@ -754,3 +754,6 @@ input.money { width: 130px; padding: 4px 8px; text-align: right; font-variant-nu
 .lp-cos.none { color: var(--amber); border-color: var(--amber); }
 .lp-company-list { display: flex; flex-direction: column; gap: 6px; padding: 8px 14px 12px 40px; border-top: 1px solid var(--border); }
 .lp-company-list select { max-width: 420px; margin-top: 4px; }
+.lp-note { display: flex; align-items: center; gap: 4px; font-size: 12px; margin-top: 3px; }
+.lp-note.warn { color: var(--amber); }
+.lp-note.ok { color: var(--ok); }

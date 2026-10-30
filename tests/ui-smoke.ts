@@ -435,7 +435,7 @@ async function main() {
   if (concrete.bidders.length !== 3 || !concrete.bidders.some((b: any) => b.email === 'dennis@anchormenllc.com')) throw new Error('vendor list companies not added to Concrete')
   if (concrete.takeoffLines[0].quantity !== 7400) throw new Error('slab quantity not worked out from the drawing: ' + concrete.takeoffLines[0].quantity)
   if (!afterImport.files.some((f: any) => f.name.startsWith('Leopard takeoff - '))) throw new Error('takeoff copy not saved with the job')
-  if (![...leo.users.get('estimator@test.local')!.jobs.get('riverside01')!.files.keys()].some((k) => k.startsWith('bidmail-takeoff-'))) throw new Error('takeoff copy not saved in Leopard storage')
+  if (![...leo.users.get('estimator@test.local')!.jobs.get('riverside01')!.files.keys()].includes('bidmail-takeoff.json')) throw new Error('takeoff copy not saved in Leopard storage')
   console.log('leopard ok: linked, takeoff imported, trades set up, copies saved in BidMail and Leopard')
   await page.locator('.modal-foot button', { hasText: 'Send request for bids' }).click()
   await page.waitForSelector('.bulk-modal')

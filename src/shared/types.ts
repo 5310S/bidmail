@@ -36,6 +36,8 @@ export interface LeopardLink {
   takeoffImportedBy: string
   takeoffPath: string | null
   itemCount: number
+  /** Leopard's save time (ms) of the takeoff that was imported, to tell when it has changed since. */
+  takeoffSavedAt?: number | null
 }
 
 /** One quantity from the takeoff, carried on its trade for request-for-bid emails. */

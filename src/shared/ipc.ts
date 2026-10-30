@@ -86,6 +86,15 @@ export interface LeopardProjectInfo {
   changed: number | null
   takeoffSaved: number | null
   fileCount: number
+  deleted?: boolean
+}
+
+/** Whether the job's imported takeoff is still current with Leopard. */
+export interface LeopardCheck {
+  state: 'unlinked' | 'signed_out' | 'offline' | 'gone' | 'deleted' | 'no_takeoff' | 'not_imported' | 'changed' | 'current'
+  /** When the takeoff was last saved in Leopard (ms). */
+  takeoffSaved: number | null
+  message: string
 }
 
 export interface TakeoffPackagePreview {

@@ -116,6 +116,7 @@ function registerIpc() {
   handle('leopard:projects', () => leopard.projects())
   handle('leopard:link', (jobId: string, projectId: string | null) => leopard.link(jobId, projectId))
   handle('leopard:import', (jobId: string) => leopard.importTakeoff(jobId))
+  handle('leopard:check', (jobId: string) => leopard.check(jobId))
   handle('leopard:open', (projectId?: string, itemId?: string) => shell.openExternal(leopard.openUrl(projectId, itemId)))
 
   // the vendor list: an Excel sheet of subcontractors by trade, imported into Companies

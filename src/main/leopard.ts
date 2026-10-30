@@ -20,9 +20,13 @@ export interface LeopardProject {
   changed: number | null
   takeoffSaved: number | null
   fileCount: number
+  /** In Leopard's Recently deleted. */
+  deleted: boolean
 }
 
 export class LeopardAuthError extends Error {}
+/** The project is no longer in the signed-in Leopard account. */
+export class LeopardGoneError extends Error {}
 
 const pick = (o: any, ...keys: string[]): any => {
   for (const k of keys) {
@@ -34,6 +38,17 @@ const pick = (o: any, ...keys: string[]): any => {
 const num = (v: any): number | null => (v == null || v === '' || typeof v === 'object' || isNaN(Number(v)) ? null : Number(v))
 const time = (v: any): number | null => (typeof v === 'string' && isNaN(Number(v)) ? Date.parse(v) || null : num(v))
 const EXPIRED = 'Your Leopard sign-in has expired. Sign in again in Settings > Leopard.'
+const GONE = 'This project is no longer in your Leopard account. Link the job to its project again.'
+
+/** The account and its storage, from /api/login or /api/me: {email, name, used, quota} (bytes). */
+function accountFrom(j: any): LeopardAccount {
+  const quotaGb = num(pick(j, 'quotaGB', 'quotaGb', 'storage.quotaGB', 'usage.quotaGB'))
+  return {
+    email: String(pick(j, 'email', 'user.email', 'account.email') ?? ''),
+    usedBytes: num(pick(j, 'used', 'usedBytes', 'bytes', 'usage', 'storage.used', 'storage.usedBytes', 'usage.used', 'usage.bytes', 'usage.usedBytes')),
+    quotaBytes: num(pick(j, 'quota', 'quotaBytes', 'limit', 'storage.quota', 'storage.quotaBytes', 'usage.quota', 'usage.quotaBytes')) ?? (quotaGb == null ? null : quotaGb * 1024 ** 3)
+  }
+}
 
 export const normalizeLeopardUrl = (u: string) => {
   let s = (u || LEOPARD_DEFAULT_URL).trim().replace(/\/+$/, '')
@@ -99,6 +114,9 @@ export class LeopardClient {
     const c = set.map((s) => /^\s*leopard=([^;]*)/.exec(s)?.[1]).find(Boolean)
     if (!c) throw new Error('Leopard did not start a session (no sign-in cookie came back)')
     this.cookie = c
+    // Leopard's login answers with the account: {email, name, used, quota}.
+    const body = parse(r.body)
+    if (body && pick(body, 'email', 'user.email')) return accountFrom(body)
     return this.me().catch(() => ({ email: email.trim(), usedBytes: null, quotaBytes: null }))
   }
 
@@ -113,15 +131,11 @@ export class LeopardClient {
     const j = parse(r.body) ?? {}
     const email = pick(j, 'email', 'user.email', 'account.email')
     if (!email && (j.signedIn === false || j.user === null)) throw new LeopardAuthError(this.cookie ? EXPIRED : 'Sign in to Leopard first (Settings > Leopard).')
-    const quotaGb = num(pick(j, 'quotaGB', 'quotaGb', 'storage.quotaGB', 'usage.quotaGB'))
-    return {
-      email: String(email ?? ''),
-      usedBytes: num(pick(j, 'used', 'usedBytes', 'bytes', 'usage', 'storage.used', 'storage.usedBytes', 'usage.used', 'usage.bytes', 'usage.usedBytes')),
-      quotaBytes: num(pick(j, 'quota', 'quotaBytes', 'limit', 'storage.quota', 'storage.quotaBytes', 'usage.quota', 'usage.quotaBytes')) ?? (quotaGb == null ? null : quotaGb * 1024 ** 3)
-    }
+    return accountFrom(j)
   }
 
-  async projects(): Promise<LeopardProject[]> {
+  /** The account's projects; Leopard's Recently deleted ones only when asked for. */
+  async projects(includeDeleted = false): Promise<LeopardProject[]> {
     const r = await this.call('GET', '/api/jobs')
     const j = parse(r.body)
     const list: any[] = Array.isArray(j) ? j : pick(j, 'jobs', 'data') ?? []
@@ -135,16 +149,19 @@ export class LeopardClient {
           location: String(pick(info, 'location', 'address') ?? ''),
           changed: time(pick(info, 'changed', 'opened', 'created')),
           takeoffSaved: time(x.takeoffSaved) || null,
-          fileCount: Array.isArray(x.files) ? x.files.length : 0
+          fileCount: Array.isArray(x.files) ? x.files.length : 0,
+          deleted: !!info.deleted
         }
       })
-      .filter((p) => p.id)
+      .filter((p) => p.id && (includeDeleted || !p.deleted))
       .sort((a, b) => (b.changed ?? 0) - (a.changed ?? 0))
   }
 
   /** The project's takeoff (Leopard's TakeoffData), or null when none has been saved yet. */
   async takeoff(id: string): Promise<{ data: any | null; saved: number | null }> {
     const r = await this.request('GET', `/api/jobs/${encodeURIComponent(id)}/takeoff`)
+    // 404 "Not there": no takeoff saved yet. 404 "No such job": the project is gone from the account.
+    if (r.status === 404 && /no such job/i.test(errorText(r.body))) throw new LeopardGoneError(GONE)
     if (r.status === 404 || r.status === 204) return { data: null, saved: null }
     if (r.status === 401) throw new LeopardAuthError(EXPIRED)
     if (r.status >= 400) throw new Error(errorText(r.body) || `Leopard answered ${r.status}`)

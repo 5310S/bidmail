@@ -138,10 +138,11 @@ export function seedLeopard(m: MockLeopard, email = 'kei@5310s.com', password = 
   jobs.set('riverside01', {
     job: { id: 'riverside01', name: 'Riverside Medical Office', number: '24-117', location: 'Springfield', changed: Date.now() - 3600_000, files: ['plans.pdf'], attachments: [] },
     takeoff: JSON.stringify(SAMPLE_TAKEOFF),
-    saved: Date.now() - 600_000,
+    saved: Date.now() - 600_000 + 0.123, // Leopard's X-Saved is the file's mtimeMs: it can have a fraction
     files: new Map([['plans.pdf', Buffer.alloc(2048)]])
   })
   jobs.set('library01', { job: { id: 'library01', name: 'County Library Reroof', number: '', location: '', changed: Date.now() - 86400_000, files: [], attachments: [] }, takeoff: null, saved: null, files: new Map() })
+  jobs.set('oldjob01', { job: { id: 'oldjob01', name: 'Riverside Old Copy', number: '24-117', deleted: Date.now() - 3600_000, changed: Date.now(), files: [] }, takeoff: '{}', saved: Date.now(), files: new Map() })
   m.users.set(email, { password, jobs })
   return { email, password }
 }

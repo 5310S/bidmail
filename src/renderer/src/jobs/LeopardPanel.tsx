@@ -1,7 +1,7 @@
 // Leopard on a job: link the job to its Leopard project, import the takeoff (a copy is saved with the job and in
 // Leopard's storage), and turn the quantities into trades for request-for-bid emails.
 import { useEffect, useState } from 'react'
-import type { LeopardProjectInfo, LeopardStatus, TakeoffAnalysisResult } from '../../../shared/ipc'
+import type { LeopardCheck, LeopardProjectInfo, LeopardStatus, TakeoffAnalysisResult } from '../../../shared/ipc'
 import type { CompanyWithStats, JobDetail } from '../../../shared/types'
 import { companiesForTrade } from '../../../shared/vendorList'
 import { fmtQty } from '../../../shared/takeoffAnalysis'
@@ -26,6 +26,18 @@ export function LeopardFact({ detail, onSendInvites }: { detail: JobDetail; onSe
   }, [])
   const signedIn = !!status?.signedIn
   const needSignIn = () => go({ kind: 'settings', tab: 'leopard' })
+  // Is the imported takeoff still what's in Leopard? Checked when the job opens and after each import.
+  const [check, setCheck] = useState<LeopardCheck | null>(null)
+  useEffect(() => {
+    if (!link || !signedIn) return setCheck(null)
+    let live = true
+    leopardApi.check(detail.job.id).then((c) => live && setCheck(c)).catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [link?.projectId, link?.takeoffSavedAt, link?.takeoffImportedAt, signedIn])
+  const changed = check?.state === 'changed'
+  const lost = check?.state === 'gone' || check?.state === 'deleted'
 
   return (
     <div className={cx('fact leopard', link ? 'linked' : 'unlinked')}>
@@ -38,10 +50,21 @@ export function LeopardFact({ detail, onSendInvites }: { detail: JobDetail; onSe
             <div className="muted small">
               {link.takeoffImportedAt ? `Imported ${fmtDateTime(link.takeoffImportedAt)}${link.takeoffImportedBy ? ` by ${link.takeoffImportedBy}` : ''} · ${link.itemCount} items` : `Linked by ${link.linkedBy || 'a teammate'} · not imported yet`}
             </div>
+            {changed && (
+              <div className="lp-note warn" title={check?.takeoffSaved ? `Saved in Leopard ${ago(check.takeoffSaved)}` : ''}>
+                <Icon name="alert" size={13} /> Takeoff changed in Leopard{check?.takeoffSaved ? ` ${ago(check.takeoffSaved)}` : ''}
+              </div>
+            )}
+            {lost && <div className="lp-note warn"><Icon name="alert" size={13} /> {check?.message}</div>}
+            {check?.state === 'current' && <div className="lp-note ok"><Icon name="check" size={13} /> Up to date with Leopard</div>}
             <div className="lp-actions">
-              <Button small kind={link.takeoffImportedAt ? 'default' : 'primary'} icon="download" onClick={() => (signedIn ? setImporting(true) : needSignIn())}>
-                {link.takeoffImportedAt ? 'Re-import' : 'Import takeoff'}
-              </Button>
+              {lost ? (
+                <Button small kind="primary" icon="link" onClick={() => setPicking(true)}>Link again</Button>
+              ) : (
+                <Button small kind={!link.takeoffImportedAt || changed ? 'primary' : 'default'} icon="download" onClick={() => (signedIn ? setImporting(true) : needSignIn())}>
+                  {link.takeoffImportedAt ? 'Re-import' : 'Import takeoff'}
+                </Button>
+              )}
               <Button small icon="external" title="Open this project in Leopard" onClick={() => leopardApi.open(link.projectId)} />
               <Menu
                 align="right"
