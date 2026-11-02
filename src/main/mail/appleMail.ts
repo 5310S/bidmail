@@ -215,18 +215,26 @@ on run argv
   set RS to ASCII character 30
   tell application "Mail"
     set m to make new outgoing message with properties {sender:(item 1 of argv), subject:(item 2 of argv), content:(item 3 of argv), visible:false}
-    my addRecipients(m, item 4 of argv, "to")
-    my addRecipients(m, item 5 of argv, "cc")
-    my addRecipients(m, item 6 of argv, "bcc")
-    if (count of argv) > 6 then
-      tell content of m
-        repeat with i from 7 to count of argv
-          make new attachment with properties {file name:(POSIX file (item i of argv)) as alias} at after last paragraph
-        end repeat
-      end tell
-      delay 1 -- Mail drops attachments that are still being added when the message is sent
-    end if
-    send m
+    try
+      my addRecipients(m, item 4 of argv, "to")
+      my addRecipients(m, item 5 of argv, "cc")
+      my addRecipients(m, item 6 of argv, "bcc")
+      if (count of argv) > 6 then
+        tell content of m
+          repeat with i from 7 to count of argv
+            make new attachment with properties {file name:(POSIX file (item i of argv)) as alias} at after last paragraph
+          end repeat
+        end tell
+        delay 1 -- Mail drops attachments that are still being added when the message is sent
+      end if
+      send m
+    on error errText number errNum
+      -- Don't leave a half-built message behind (Mail would save it to Drafts).
+      try
+        close m saving no
+      end try
+      error errText number errNum
+    end try
   end tell
   return "ok"
 end run
@@ -239,8 +247,9 @@ on addRecipients(m, packed, kind)
     set AppleScript's text item delimiters to ASCII character 31
     set parts to text items of p
     set AppleScript's text item delimiters to ""
-    set props to {name:item 1 of parts, address:item 2 of parts}
     tell application "Mail"
+      -- Built inside the tell block so "address" means Mail's recipient property, not a plain record label.
+      set props to {name:item 1 of parts, address:item 2 of parts}
       if kind is "to" then
         make new to recipient at end of to recipients of m with properties props
       else if kind is "cc" then
