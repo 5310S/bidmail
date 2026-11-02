@@ -8,6 +8,7 @@ import { deleteAccount, getAccount, listAccounts, saveAccount } from './mail/acc
 import { getSettings, publicSettings, saveSettings } from './settings'
 import { htmlToPdf, printHtml } from './print'
 import { providerFor, signIn, OAuthProviderId } from './mail/oauth'
+import { appleMail } from './mail/appleMail'
 import { SnoozeService } from './mail/snooze'
 import { RulesRunner } from './mail/rulesRunner'
 import { startReminders } from './reminders'
@@ -231,6 +232,32 @@ function registerIpc() {
     await mail.testAccount(account, { accessToken: r.accessToken })
     const saved = saveAccount({ account, password: r.refreshToken })
     mail.rememberToken(saved.id, r.accessToken, r.expiresAt)
+    await mail.disconnect(saved.id)
+    mail.startWatcher(saved.id)
+    return saved
+  })
+  /** Mac only: the accounts set up in the Mail app, which BidMail can read and send through. */
+  handle('accounts:appleMailList', () => (appleMail.available() ? appleMail.accounts() : []))
+  handle('accounts:appleMail', async (name: string) => {
+    const info = (await appleMail.accounts()).find((a) => a.name === name)
+    if (!info) throw new Error(`Mail has no account named "${name}". Check Mail > Settings > Accounts.`)
+    const existing = listAccounts().find((a) => a.authType === 'applemail' && a.appleMailAccount === name)
+    const none = { host: '', port: 0, secure: true, user: '' }
+    const account: MailAccount = {
+      id: existing?.id ?? '',
+      displayName: existing?.displayName || info.fullName || getSettings().userName,
+      email: info.email,
+      imap: none,
+      smtp: none,
+      signature: existing?.signature ?? '',
+      color: existing?.color ?? '#2f6fdb',
+      saveSentCopy: false,
+      allowInvalidCerts: false,
+      authType: 'applemail',
+      appleMailAccount: name
+    }
+    await mail.testAccount(account, {})
+    const saved = saveAccount({ account })
     await mail.disconnect(saved.id)
     mail.startWatcher(saved.id)
     return saved

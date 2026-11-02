@@ -1,4 +1,5 @@
 // MailService: IMAP (reading, folders, flags, drafts) via imapflow, SMTP (sending) via nodemailer.
+// Accounts connected through Mac Mail ('applemail') go through ./appleMail instead; each method branches on that.
 import { app } from 'electron'
 import { ImapFlow, FetchMessageObject, ListResponse, MailboxObject } from 'imapflow'
 import nodemailer, { Transporter } from 'nodemailer'
@@ -24,6 +25,7 @@ import { OAuthProvider, OAuthProviderId, refresh } from './oauth'
 import { MailCache } from './cache'
 import { buildReplyIcs, CalendarEvent, parseIcs, RsvpStatus } from '../../shared/ics'
 import { htmlToText, wrapHtml } from './html'
+import { appleMail, appleMailMessage } from './appleMail'
 
 interface Conn {
   worker: ImapFlow | null
@@ -133,6 +135,8 @@ export class MailService extends EventEmitter {
   private disk: MailCache
   private prefetching = new Set<string>()
   private tokens = new Map<string, { accessToken: string; expiresAt: number }>()
+  /** Mac Mail accounts: newest Inbox message id already announced, to spot new mail when polling. */
+  private appleNewest = new Map<string, number>()
   /** Set by the app: resolves Microsoft/Google sign-in settings for token refresh. */
   oauthProvider: ((id: OAuthProviderId) => OAuthProvider) | null = null
 
@@ -171,6 +175,12 @@ export class MailService extends EventEmitter {
     return a.account
   }
 
+  /** The account's name in Mac Mail when it is connected through Mail, otherwise null. */
+  private apple(accountId: string): string | null {
+    const a = getAccount(accountId)?.account
+    return a?.authType === 'applemail' ? (a.appleMailAccount ?? '') : null
+  }
+
   /** Remembers the access token from a fresh sign-in so it is used before the first refresh. */
   rememberToken(accountId: string, accessToken: string, expiresAt: number) {
     this.tokens.set(accountId, { accessToken, expiresAt })
@@ -197,6 +207,7 @@ export class MailService extends EventEmitter {
   }
 
   private async worker(accountId: string): Promise<ImapFlow> {
+    if (this.apple(accountId) !== null) throw new Error('This account is connected through Mac Mail; this action is not available for it.')
     const c = this.conn(accountId)
     if (c.worker && c.worker.usable) return c.worker
     const { account, auth } = await this.auth(accountId)
@@ -223,6 +234,7 @@ export class MailService extends EventEmitter {
     const c = this.conn(accountId)
     if (c.watcherTimer) clearTimeout(c.watcherTimer)
     c.watcherTimer = null
+    if (this.apple(accountId) !== null) return this.pollAppleMail(accountId)
     if (c.watcher) {
       const old = c.watcher
       c.watcher = null
@@ -269,6 +281,24 @@ export class MailService extends EventEmitter {
     }
   }
 
+  /** Mac Mail accounts: Mail fetches the mail; BidMail looks at the newest Inbox messages every 30 seconds. */
+  private async pollAppleMail(accountId: string) {
+    const c = this.conn(accountId)
+    const name = this.apple(accountId)
+    if (name === null) return
+    try {
+      const { messages } = await appleMail.list(name, 'INBOX', 0, 15)
+      const seen = this.appleNewest.get(accountId)
+      const fresh = seen === undefined ? [] : messages.filter((m) => m.uid > seen)
+      this.appleNewest.set(accountId, Math.max(seen ?? 0, ...messages.map((m) => m.uid)))
+      this.emit('status', { accountId, online: true })
+      if (fresh.length) this.emit('newMail', { accountId, path: 'INBOX', messages: fresh })
+    } catch {
+      this.emit('status', { accountId, online: false })
+    }
+    if (this.conns.get(accountId) === c) c.watcherTimer = setTimeout(() => this.pollAppleMail(accountId), 30000)
+  }
+
   async disconnect(accountId: string) {
     const c = this.conns.get(accountId)
     if (!c) return
@@ -287,6 +317,12 @@ export class MailService extends EventEmitter {
   }
 
   async testAccount(account: MailAccount, secret: MailAuth): Promise<string> {
+    if (account.authType === 'applemail') {
+      const found = (await appleMail.accounts()).some((a) => a.name === account.appleMailAccount)
+      if (!found) throw new Error(`Mail has no account named "${account.appleMailAccount}". Check Mail > Settings > Accounts.`)
+      await appleMail.folders(account.appleMailAccount ?? '')
+      return 'Connected through Mac Mail. Reading and sending both go through the Mail app.'
+    }
     const client = imapClient(account, secret)
     try {
       await client.connect()
@@ -325,6 +361,18 @@ export class MailService extends EventEmitter {
   }
 
   private async listFoldersLive(accountId: string): Promise<MailFolder[]> {
+    const name = this.apple(accountId)
+    if (name !== null) {
+      const folders = await appleMail.folders(name)
+      folders.sort((a, b) => {
+        const ia = SPECIAL_ORDER.indexOf(a.specialUse)
+        const ib = SPECIAL_ORDER.indexOf(b.specialUse)
+        if (ia !== ib) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+        return a.path.localeCompare(b.path, undefined, { sensitivity: 'base' })
+      })
+      this.conn(accountId).folders = folders
+      return folders
+    }
     const client = await this.worker(accountId)
     const list: ListResponse[] = await client.list({ statusQuery: { unseen: true, messages: true } })
     const folders: MailFolder[] = list
@@ -363,10 +411,15 @@ export class MailService extends EventEmitter {
     const f = folders.find((x) => x.specialUse === use) ?? folders.find((x) => nameRe.test(x.name))
     if (f) return f.path
     if (!create) return null
-    const client = await this.worker(accountId)
-    await client.mailboxCreate(create).catch(() => {})
-    await this.listFolders(accountId)
+    await this.createFolder(accountId, create)
     return create
+  }
+
+  private async createFolder(accountId: string, name: string) {
+    const apple = this.apple(accountId)
+    if (apple !== null) await appleMail.createFolder(apple, name).catch(() => {})
+    else await (await this.worker(accountId)).mailboxCreate(name).catch(() => {})
+    await this.listFolders(accountId)
   }
 
   // ---------- messages ----------
@@ -376,7 +429,7 @@ export class MailService extends EventEmitter {
       const { list, uidValidity } = await this.listMessagesLive(accountId, folder, offset, limit)
       if (offset === 0) {
         this.disk.saveList(accountId, folder, uidValidity, list)
-        this.prefetch(accountId, folder, list.messages)
+        if (this.apple(accountId) === null) this.prefetch(accountId, folder, list.messages)
       }
       return list
     } catch (e: any) {
@@ -388,6 +441,11 @@ export class MailService extends EventEmitter {
   }
 
   private async listMessagesLive(accountId: string, folder: string, offset: number, limit: number) {
+    const apple = this.apple(accountId)
+    if (apple !== null) {
+      const { total, messages } = await appleMail.list(apple, folder, offset, limit)
+      return { uidValidity: 'mail', list: { messages, total, hasMore: offset + limit < total } as MessageList }
+    }
     const client = await this.worker(accountId)
     const lock = await client.getMailboxLock(folder)
     try {
@@ -451,6 +509,11 @@ export class MailService extends EventEmitter {
     })()
   }
   async search(accountId: string, folder: string, query: string): Promise<MessageList> {
+    const apple = this.apple(accountId)
+    if (apple !== null) {
+      const found = (await appleMail.search(apple, folder, query.trim())).sort((a, b) => b.uid - a.uid)
+      return { messages: found.slice(0, 150), total: found.length, hasMore: false }
+    }
     const client = await this.worker(accountId)
     const lock = await client.getMailboxLock(folder)
     try {
@@ -504,6 +567,20 @@ export class MailService extends EventEmitter {
         flags.add('\\Seen')
         const update = this.setFlags(accountId, folder, [uid], { seen: true }).catch(() => {})
         if (!fromCache) await update // online: confirm with the server; offline: never wait on the network
+      }
+    } else if (this.apple(accountId) !== null) {
+      const apple = this.apple(accountId) ?? ''
+      source = await appleMail.source(apple, folder, uid)
+      size = source.length
+      const summary =
+        this.disk.loadList(accountId, folder)?.list.messages.find((m) => m.uid === uid) ?? (await appleMail.summaries(apple, folder, [uid]))[0]
+      if (summary?.seen) flags.add('\\Seen')
+      if (summary?.flagged) flags.add('\\Flagged')
+      if (summary?.answered) flags.add('\\Answered')
+      if (markSeen && !flags.has('\\Seen')) {
+        flags.add('\\Seen')
+        await appleMail.setFlag(apple, folder, [uid], 'read', true).catch(() => {})
+        this.patchSaved(accountId, folder, [uid], { seen: true })
       }
     } else {
       const client = await this.worker(accountId)
@@ -615,6 +692,7 @@ export class MailService extends EventEmitter {
     const ev = detail.invite
     if (!ev) throw new Error('This message has no meeting invite.')
     if (!ev.organizer?.email) throw new Error('This invite has no organizer to reply to.')
+    if (this.apple(accountId) !== null) throw new Error('For accounts connected through Mac Mail, answer meeting invites in Mail or Calendar.')
     const account = this.accountOf(accountId)
     const verb = status === 'ACCEPTED' ? 'Accepted' : status === 'TENTATIVE' ? 'Tentative' : 'Declined'
     const me = account.displayName || account.email
@@ -689,6 +767,20 @@ export class MailService extends EventEmitter {
   }
 
   async setFlags(accountId: string, folder: string, uids: number[], f: { seen?: boolean; flagged?: boolean }) {
+    const apple = this.apple(accountId)
+    if (apple !== null) {
+      if (f.seen !== undefined) await appleMail.setFlag(apple, folder, uids, 'read', f.seen)
+      if (f.flagged !== undefined) await appleMail.setFlag(apple, folder, uids, 'flagged', f.flagged)
+      this.patchSaved(accountId, folder, uids, f)
+      for (const uid of uids) {
+        const hit = this.cache.get(this.cacheKey(accountId, folder, uid))
+        if (hit) {
+          if (f.seen !== undefined) hit.detail.seen = f.seen
+          if (f.flagged !== undefined) hit.detail.flagged = f.flagged
+        }
+      }
+      return true
+    }
     const client = await this.worker(accountId)
     const lock = await client.getMailboxLock(folder)
     try {
@@ -714,12 +806,16 @@ export class MailService extends EventEmitter {
   }
 
   async move(accountId: string, folder: string, uids: number[], dest: string) {
-    const client = await this.worker(accountId)
-    const lock = await client.getMailboxLock(folder)
-    try {
-      await client.messageMove(uids.join(','), dest, { uid: true })
-    } finally {
-      lock.release()
+    const apple = this.apple(accountId)
+    if (apple !== null) await appleMail.move(apple, folder, uids, dest)
+    else {
+      const client = await this.worker(accountId)
+      const lock = await client.getMailboxLock(folder)
+      try {
+        await client.messageMove(uids.join(','), dest, { uid: true })
+      } finally {
+        lock.release()
+      }
     }
     for (const uid of uids) this.cache.delete(this.cacheKey(accountId, folder, uid))
     this.patchSaved(accountId, folder, uids, { remove: true })
@@ -729,12 +825,16 @@ export class MailService extends EventEmitter {
   async remove(accountId: string, folder: string, uids: number[]) {
     const trash = await this.specialFolder(accountId, '\\Trash', /^(trash|deleted( items| messages)?|bin)$/i)
     if (trash && trash !== folder) return this.move(accountId, folder, uids, trash)
-    const client = await this.worker(accountId)
-    const lock = await client.getMailboxLock(folder)
-    try {
-      await client.messageDelete(uids.join(','), { uid: true })
-    } finally {
-      lock.release()
+    const apple = this.apple(accountId)
+    if (apple !== null) await appleMail.move(apple, folder, uids, '')
+    else {
+      const client = await this.worker(accountId)
+      const lock = await client.getMailboxLock(folder)
+      try {
+        await client.messageDelete(uids.join(','), { uid: true })
+      } finally {
+        lock.release()
+      }
     }
     for (const uid of uids) this.cache.delete(this.cacheKey(accountId, folder, uid))
     this.patchSaved(accountId, folder, uids, { remove: true })
@@ -743,6 +843,15 @@ export class MailService extends EventEmitter {
 
   /** Moves one message and returns its UID in the destination folder (null if the server doesn't say). */
   async moveOne(accountId: string, folder: string, uid: number, dest: string): Promise<number | null> {
+    const apple = this.apple(accountId)
+    if (apple !== null) {
+      // Mail gives a moved message a new id; find it again by its Message-ID (null until Mail has filed it).
+      const [summary] = await appleMail.summaries(apple, folder, [uid])
+      await appleMail.move(apple, folder, [uid], dest)
+      this.cache.delete(this.cacheKey(accountId, folder, uid))
+      this.patchSaved(accountId, folder, [uid], { remove: true })
+      return summary?.messageId ? appleMail.findByMessageId(apple, dest, summary.messageId).catch(() => null) : null
+    }
     const client = await this.worker(accountId)
     const lock = await client.getMailboxLock(folder)
     let newUid: number | null = null
@@ -760,6 +869,8 @@ export class MailService extends EventEmitter {
   /** Finds a message by its Message-ID header. */
   async findByMessageId(accountId: string, folder: string, messageId: string): Promise<number | null> {
     if (!messageId) return null
+    const apple = this.apple(accountId)
+    if (apple !== null) return appleMail.findByMessageId(apple, folder, messageId)
     const client = await this.worker(accountId)
     const lock = await client.getMailboxLock(folder)
     try {
@@ -776,9 +887,7 @@ export class MailService extends EventEmitter {
     if (!folders.length) folders = await this.listFolders(accountId)
     const found = folders.find((f) => f.name.toLowerCase() === name.toLowerCase() || f.path.toLowerCase() === name.toLowerCase())
     if (found) return found.path
-    const client = await this.worker(accountId)
-    await client.mailboxCreate(name).catch(() => {})
-    await this.listFolders(accountId)
+    await this.createFolder(accountId, name)
     return name
   }
 
@@ -848,6 +957,7 @@ export class MailService extends EventEmitter {
   async send(data: ComposeData): Promise<{ messageId: string }> {
     if (!data.to.trim() && !data.cc.trim() && !data.bcc.trim()) throw new Error('Add at least one recipient.')
     const account = this.accountOf(data.accountId)
+    if (account.authType === 'applemail') return this.sendViaAppleMail(account, data)
     const options = await this.buildOptions(data)
     try {
       await (await this.transport(data.accountId)).sendMail(options)
@@ -873,6 +983,33 @@ export class MailService extends EventEmitter {
     return { messageId: String(options.messageId) }
   }
 
+  /**
+   * Hands the message to Mac Mail to send (as plain text: Mail cannot be given formatted mail to send).
+   * Mail files it in Sent itself. The Message-ID is Mail's own, so the returned one is only a placeholder.
+   */
+  private async sendViaAppleMail(account: MailAccount, data: ComposeData): Promise<{ messageId: string }> {
+    const files: string[] = []
+    for (const a of data.attachments) {
+      if (a.path) files.push(a.path)
+      else if (a.source) files.push(await this.writeAttachment(a.source.key, a.source.id, undefined, a.filename))
+    }
+    try {
+      await appleMail.send({
+        from: formatAddress({ name: account.displayName, address: account.email }),
+        subject: data.subject,
+        text: htmlToText(data.html),
+        to: data.to,
+        cc: data.cc,
+        bcc: data.bcc,
+        files
+      })
+    } catch (e: any) {
+      throw new Error(appleMailMessage(e?.message ?? String(e)))
+    }
+    if (data.draft) await appleMail.move(account.appleMailAccount ?? '', data.draft.path, [data.draft.uid], '').catch(() => {})
+    return { messageId: `<${randomUUID()}@${account.email.split('@')[1] || 'bidmail.local'}>` }
+  }
+
   private async flagAnswered(accountId: string, folder: string, uid: number) {
     const client = await this.worker(accountId)
     const lock = await client.getMailboxLock(folder)
@@ -894,6 +1031,7 @@ export class MailService extends EventEmitter {
   }
 
   async saveDraft(data: ComposeData): Promise<{ path: string; uid: number } | null> {
+    if (this.apple(data.accountId) !== null) throw new Error('Drafts cannot be saved for accounts connected through Mac Mail. Send the message, or keep this window open.')
     const drafts = await this.specialFolder(data.accountId, '\\Drafts', /^drafts?$/i, 'Drafts')
     if (!drafts) throw new Error('No Drafts folder')
     const options = await this.buildOptions(data)

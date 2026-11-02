@@ -155,9 +155,11 @@ export interface MailAccount {
   color: string
   saveSentCopy: boolean // append sent mail to the Sent folder (Gmail/Outlook do this automatically)
   allowInvalidCerts: boolean
-  /** 'oauth' = Sign in with Microsoft/Google (the saved secret is a refresh token). */
-  authType?: 'password' | 'oauth'
+  /** 'oauth' = Sign in with Microsoft/Google (the saved secret is a refresh token). 'applemail' = through Mac Mail. */
+  authType?: 'password' | 'oauth' | 'applemail'
   oauthProvider?: 'microsoft' | 'google'
+  /** For 'applemail': the account's name in Mail (Mail > Settings > Accounts). */
+  appleMailAccount?: string
   hasPassword?: boolean
 }
 

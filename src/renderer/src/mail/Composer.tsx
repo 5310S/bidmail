@@ -266,8 +266,12 @@ export function Composer() {
             }
           />
           <span className="grow" />
-          <span className="muted small">{modKey}+Enter to send</span>
-          <Button icon="file" onClick={() => saveDraft(false)}>Save Draft</Button>
+          {account?.authType === 'applemail' ? (
+            <span className="muted small">Sent through Mac Mail as plain text</span>
+          ) : (
+            <span className="muted small">{modKey}+Enter to send</span>
+          )}
+          {account?.authType !== 'applemail' && <Button icon="file" onClick={() => saveDraft(false)}>Save Draft</Button>}
           <Button kind="ghost" icon="trash" title="Discard" onClick={close} />
         </div>
       </div>

@@ -183,7 +183,9 @@ export const accounts = {
   save: (input: AccountSaveInput) => invoke<MailAccount>('accounts:save', input),
   remove: (id: string) => invoke('accounts:delete', id),
   test: (account: MailAccount, password?: string) => invoke<string>('accounts:test', account, password),
-  oauth: (provider: 'microsoft' | 'google', existingId?: string) => invoke<MailAccount>('accounts:oauth', provider, existingId)
+  oauth: (provider: 'microsoft' | 'google', existingId?: string) => invoke<MailAccount>('accounts:oauth', provider, existingId),
+  appleMailList: () => invoke<{ name: string; email: string; fullName: string; type: string }[]>('accounts:appleMailList'),
+  addAppleMail: (name: string) => invoke<MailAccount>('accounts:appleMail', name)
 }
 
 export const settingsApi = {

@@ -128,7 +128,7 @@ function AccountsTab() {
             <span className="acct-dot big" style={{ background: a.color }} />
             <div className="grow">
               <b>{a.displayName || a.email}</b>
-              <div className="muted small">{a.email} · {a.authType === 'oauth' ? `Signed in with ${a.oauthProvider === 'google' ? 'Google' : 'Microsoft'}` : a.imap.host}</div>
+              <div className="muted small">{a.email} · {a.authType === 'oauth' ? `Signed in with ${a.oauthProvider === 'google' ? 'Google' : 'Microsoft'}` : a.authType === 'applemail' ? 'Through Mac Mail' : a.imap.host}</div>
             </div>
             <Button icon="edit" onClick={() => setEditing(a)}>Edit</Button>
             <Button
@@ -152,12 +152,62 @@ function AccountsTab() {
   )
 }
 
-/** New account: choose Microsoft / Google sign-in or a password (IMAP). Signed-in accounts get their own editor. */
+/** New account: choose Microsoft / Google sign-in, Mac Mail or a password (IMAP). Signed-in accounts get their own editor. */
 function AccountEditor({ account, onClose }: { account: MailAccount | null; onClose: () => void }) {
-  const [method, setMethod] = useState<'choose' | 'password'>(account ? 'password' : 'choose')
-  if (account?.authType === 'oauth') return <OAuthAccountEditor account={account} onClose={onClose} />
-  if (method === 'choose') return <ChooseMethod onPassword={() => setMethod('password')} onClose={onClose} />
+  const [method, setMethod] = useState<'choose' | 'password' | 'applemail'>(account ? 'password' : 'choose')
+  if (account?.authType === 'oauth' || account?.authType === 'applemail') return <OAuthAccountEditor account={account} onClose={onClose} />
+  if (method === 'choose') return <ChooseMethod onPassword={() => setMethod('password')} onAppleMail={() => setMethod('applemail')} onClose={onClose} />
+  if (method === 'applemail') return <AppleMailPicker onClose={onClose} />
   return <PasswordAccountEditor account={account} onClose={onClose} />
+}
+
+/** Mac only: connect an account that is already set up in the Mail app; BidMail reads and sends through Mail. */
+function AppleMailPicker({ onClose }: { onClose: () => void }) {
+  const { reloadAccounts, toast } = useApp()
+  const [list, setList] = useState<{ name: string; email: string; type: string }[] | null>(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState('')
+  useEffect(() => {
+    accountsApi.appleMailList().then(setList, (e: any) => setError(e.message))
+  }, [])
+  const add = async (name: string) => {
+    setBusy(name)
+    try {
+      const a = await accountsApi.addAppleMail(name)
+      await reloadAccounts()
+      toast(`Connected ${a.email} through Mac Mail`, 'success')
+      onClose()
+    } catch (e: any) {
+      toast(e.message, 'error')
+    } finally {
+      setBusy('')
+    }
+  }
+  return (
+    <Modal title="Use an account from Mac Mail" onClose={onClose} width={620}>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        BidMail reads and sends your mail through the Mail app, which stays signed in to your account. Keep Mail running.
+        Emails you send from BidMail this way go out as plain text (no bold, colors or pictures).
+      </p>
+      {list === null && !error && (
+        <p className="muted"><span className="spinner sm" /> Asking Mail for its accounts... If macOS asks whether BidMail may control Mail, click OK.</p>
+      )}
+      {error && <div className="warn-box"><Icon name="alert" /> {error}</div>}
+      {list?.length === 0 && <p className="muted">Mail has no accounts set up. Add your account in Mail first (Mail &gt; Settings &gt; Accounts).</p>}
+      <div className="method-list">
+        {list?.map((a) => (
+          <button key={a.name} className="method" disabled={!!busy} onClick={() => add(a.name)}>
+            <span className="method-logo other"><Icon name="mail" size={18} /></span>
+            <span className="grow">
+              <b>{a.email || a.name}</b>
+              <span className="muted small">"{a.name}" in Mail</span>
+            </span>
+            {busy === a.name ? <span className="spinner sm" /> : <Icon name="chevronRight" />}
+          </button>
+        ))}
+      </div>
+    </Modal>
+  )
 }
 
 function useOAuthSignIn(onDone: () => void) {
@@ -181,7 +231,7 @@ function useOAuthSignIn(onDone: () => void) {
   return { busy, signIn, configured }
 }
 
-function ChooseMethod({ onPassword, onClose }: { onPassword: () => void; onClose: () => void }) {
+function ChooseMethod({ onPassword, onAppleMail, onClose }: { onPassword: () => void; onAppleMail: () => void; onClose: () => void }) {
   const { busy, signIn, configured } = useOAuthSignIn(onClose)
   const [setup, setSetup] = useState(false)
   return (
@@ -198,6 +248,16 @@ function ChooseMethod({ onPassword, onClose }: { onPassword: () => void; onClose
             {busy === p ? <span className="spinner sm" /> : <Icon name="chevronRight" />}
           </button>
         ))}
+        {isMac && (
+          <button className="method" disabled={!!busy} onClick={onAppleMail}>
+            <span className="method-logo other"><Icon name="mail" size={18} /></span>
+            <span className="grow">
+              <b>Use an account from Mac Mail</b>
+              <span className="muted small">Any account already working in the Mail app, including work Outlook. No sign-in setup; sends as plain text.</span>
+            </span>
+            <Icon name="chevronRight" />
+          </button>
+        )}
         <button className="method" onClick={onPassword}>
           <span className="method-logo other"><Icon name="mail" size={18} /></span>
           <span className="grow">
@@ -219,6 +279,7 @@ function OAuthAccountEditor({ account, onClose }: { account: MailAccount; onClos
   const [a, setA] = useState(account)
   const sig = useRef<RichEditorHandle>(null)
   const provider = account.oauthProvider ?? 'microsoft'
+  const viaMail = account.authType === 'applemail'
   const save = async () => {
     try {
       await accountsApi.save({ account: { ...a, signature: sig.current?.getHtml() ?? a.signature } })
@@ -231,8 +292,12 @@ function OAuthAccountEditor({ account, onClose }: { account: MailAccount; onClos
   }
   return (
     <Modal title={`Edit ${account.email}`} onClose={onClose} width={680}
-      footer={<><Button onClick={() => signIn(provider, account.id)} disabled={!!busy}>{busy ? 'Waiting for browser...' : 'Sign in again'}</Button><span className="grow" /><Button onClick={onClose}>Cancel</Button><Button kind="primary" onClick={save}>Save</Button></>}>
-      <div className="ok-box"><Icon name="check" /> Signed in with {provider === 'google' ? 'Google' : 'Microsoft'} as {account.email}. If mail stops working (for example after a password change), click "Sign in again".</div>
+      footer={<>{!viaMail && <Button onClick={() => signIn(provider, account.id)} disabled={!!busy}>{busy ? 'Waiting for browser...' : 'Sign in again'}</Button>}<span className="grow" /><Button onClick={onClose}>Cancel</Button><Button kind="primary" onClick={save}>Save</Button></>}>
+      {viaMail ? (
+        <div className="ok-box"><Icon name="check" /> Connected through Mac Mail ("{account.appleMailAccount}"). Mail does the signing in; keep it running. Emails sent from BidMail go out as plain text, and the signature below is added as text.</div>
+      ) : (
+        <div className="ok-box"><Icon name="check" /> Signed in with {provider === 'google' ? 'Google' : 'Microsoft'} as {account.email}. If mail stops working (for example after a password change), click "Sign in again".</div>
+      )}
       <div className="form-grid" style={{ marginTop: 12 }}>
         <Field label="Your name (as recipients see it)" wide><input value={a.displayName} onChange={(e) => setA({ ...a, displayName: e.target.value })} /></Field>
       </div>

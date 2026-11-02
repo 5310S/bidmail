@@ -103,7 +103,8 @@
       "hardenedRuntime": false,
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
       "extendInfo": {
-        "NSHumanReadableCopyright": "BidMail"
+        "NSHumanReadableCopyright": "BidMail",
+        "NSAppleEventsUsageDescription": "BidMail reads and sends your email through the Mail app for accounts you connect through Mac Mail."
       }
     },
     "afterPack": "build/afterPack.cjs",
