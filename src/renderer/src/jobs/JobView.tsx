@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { effectiveTradeStatus, JobDetail, JobStatus, JOB_STATUS_LABELS, STANDARD_TRADES, TRADE_STATUS_LABELS } from '../../../shared/types'
 import { bid, sys } from '../api'
 import { useApp, useBidQuery } from '../state'
@@ -16,8 +16,9 @@ import { TakeoffPanel } from './TakeoffPanel'
 import { ImportTakeoffModal, LeopardFact, TakeoffTab } from './LeopardPanel'
 import { buildJobReport } from './report'
 import { buildEventIcs } from '../../../shared/ics'
+import { JobMailTab } from './JobMailTab'
 
-type Tab = 'trades' | 'timeline' | 'workflow' | 'takeoff' | 'addenda' | 'leveling' | 'board' | 'activity'
+type Tab = 'trades' | 'email' | 'timeline' | 'workflow' | 'takeoff' | 'addenda' | 'leveling' | 'board' | 'activity'
 
 export function JobView({ jobId, initialTab }: { jobId: string; initialTab?: string }) {
   const { go, toast, confirm, jobs, settings } = useApp()
@@ -33,6 +34,10 @@ export function JobView({ jobId, initialTab }: { jobId: string; initialTab?: str
   const [addingTrade, setAddingTrade] = useState(false)
   const [copying, setCopying] = useState(false)
   const [importing, setImporting] = useState(false)
+  // Opening a job's folder from the Mail sidebar while the job is already showing switches to its Email tab.
+  useEffect(() => {
+    if (initialTab) setTab(initialTab as Tab)
+  }, [initialTab])
 
   if (loading && !detail) return <div className="page"><Spinner label="Loading job..." /></div>
   if (error) return <div className="page"><Empty icon="alert" title="Couldn't load this job">{error}</Empty></div>
@@ -183,6 +188,7 @@ export function JobView({ jobId, initialTab }: { jobId: string; initialTab?: str
 
       <div className="tabs">
         <button className={tab === 'trades' ? 'on' : ''} onClick={() => setTab('trades')}>Trades & Companies <span className="count">{trades.length}</span></button>
+        <button className={tab === 'email' ? 'on' : ''} onClick={() => setTab('email')}><Icon name="mail" size={14} /> Email</button>
         <button className={tab === 'timeline' ? 'on' : ''} onClick={() => setTab('timeline')}>Timeline</button>
         <button className={tab === 'workflow' ? 'on' : ''} onClick={() => setTab('workflow')}>Progress Board</button>
         <button className={tab === 'takeoff' ? 'on' : ''} onClick={() => setTab('takeoff')}>Takeoff Quantities {trades.some((t) => t.takeoffLines.length) && <span className="count">{trades.filter((t) => t.takeoffLines.length).length}</span>}</button>
@@ -228,6 +234,7 @@ export function JobView({ jobId, initialTab }: { jobId: string; initialTab?: str
           ))}
         </>
       )}
+      {tab === 'email' && <JobMailTab detail={detail} />}
       {tab === 'timeline' && <TimelineTab detail={detail} />}
       {tab === 'workflow' && <BoardTab detail={detail} />}
       {tab === 'takeoff' && (

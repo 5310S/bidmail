@@ -26,6 +26,8 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [showAllFolders, setShowAllFolders] = useState<Record<string, boolean>>({})
   const activeJobs = jobs.filter((j) => j.status === 'bidding')
+  // Job folders: bidding and submitted jobs (replies keep coming after a bid goes in).
+  const openJobs = jobs.filter((j) => j.status === 'bidding' || j.status === 'submitted')
 
   return (
     <aside className="sidebar">
@@ -127,6 +129,28 @@ export function Sidebar() {
             </div>
           )
         })}
+        {accounts.length > 0 && openJobs.length > 0 && (
+          <div className="side-account">
+            <button className="side-account-head" onClick={() => setCollapsed((c) => ({ ...c, jobFolders: !c.jobFolders }))}>
+              <Icon name={collapsed.jobFolders ? 'chevronRight' : 'chevronDown'} size={14} />
+              <Icon name="briefcase" size={14} />
+              <span className="grow ellipsis">Job Folders</span>
+            </button>
+            {!collapsed.jobFolders &&
+              openJobs.map((j) => (
+                <button
+                  key={j.id}
+                  className={cx('side-item side-folder', view.kind === 'job' && view.jobId === j.id && view.tab === 'email' && 'active')}
+                  style={{ paddingLeft: 30 }}
+                  onClick={() => go({ kind: 'job', jobId: j.id, tab: 'email' })}
+                  title={`${j.name}: emails to and from this job's companies`}
+                >
+                  <Icon name="folder" size={16} />
+                  <span className="grow ellipsis">{j.name}</span>
+                </button>
+              ))}
+          </div>
+        )}
       </div>
 
       <div className="side-foot">

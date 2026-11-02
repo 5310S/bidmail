@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { sanitizeEmail, textToHtml, htmlToPlain } from './sanitize'
+import { splitHtmlQuote, splitTextQuote } from './quotes'
 import { sys } from '../api'
 import { useApp } from '../state'
 
@@ -15,12 +16,16 @@ const BASE_CSS = (fontSize: number) => `
   img:not([src]) { display: none; }
 `
 
-/** Renders an email safely: HTML in a script-free sandboxed iframe, plain text as escaped HTML. */
+/**
+ * Renders an email safely: HTML in a script-free sandboxed iframe, plain text as escaped HTML.
+ * Shows only what this email's sender wrote; the older emails quoted under it are behind "Show earlier emails".
+ */
 export function MessageBody({
-  html, text, allowImages, simple, fontSize, onBlocked
+  html, text, subject = '', allowImages, simple, fontSize, onBlocked
 }: {
   html: string
   text: string
+  subject?: string
   allowImages: boolean
   simple: boolean
   fontSize: number
@@ -29,18 +34,27 @@ export function MessageBody({
   const { compose } = useApp()
   const ref = useRef<HTMLIFrameElement>(null)
   const [height, setHeight] = useState(200)
+  const [showQuoted, setShowQuoted] = useState(false)
 
   const doc = useMemo(() => {
     if (simple || !html) {
-      const plain = simple && html ? htmlToPlain(html) : text
-      return { html: '', blocked: 0, plain }
+      const full = simple && html ? htmlToPlain(html) : text
+      const cut = showQuoted ? { main: full, quoted: false } : splitTextQuote(full, subject)
+      return { html: '', blocked: 0, plain: cut.main, quoted: cut.quoted }
     }
-    const s = sanitizeEmail(html, allowImages)
+    const cut = showQuoted ? { main: html, quoted: false } : splitHtmlQuote(html, subject)
+    const s = sanitizeEmail(cut.main, allowImages)
     const withCss = s.html.includes('</head>')
       ? s.html.replace('</head>', `<style>${BASE_CSS(fontSize)}</style></head>`)
       : `<html><head><style>${BASE_CSS(fontSize)}</style></head><body>${s.html}</body></html>`
-    return { html: withCss, blocked: s.blockedImages, plain: '' }
-  }, [html, text, allowImages, simple, fontSize])
+    return { html: withCss, blocked: s.blockedImages, plain: '', quoted: cut.quoted }
+  }, [html, text, subject, allowImages, simple, fontSize, showQuoted])
+
+  const quoteToggle = (doc.quoted || showQuoted) && (
+    <button className="quote-toggle" onClick={() => setShowQuoted(!showQuoted)} title={showQuoted ? 'Hide the older emails quoted in this one' : 'Show the older emails quoted in this one'}>
+      <span className="quote-dots">•••</span> {showQuoted ? 'Hide earlier emails' : 'Show earlier emails'}
+    </button>
+  )
 
   useEffect(() => onBlocked(doc.blocked), [doc.blocked, onBlocked])
 
@@ -80,6 +94,7 @@ export function MessageBody({
 
   if (!doc.html) {
     return (
+      <>
       <div
         className="plain-body"
         style={{ fontSize }}
@@ -92,16 +107,21 @@ export function MessageBody({
         }}
         dangerouslySetInnerHTML={{ __html: textToHtml(doc.plain || '(This message has no text.)') }}
       />
+      {quoteToggle}
+      </>
     )
   }
   return (
-    <iframe
-      ref={ref}
-      className="html-body"
-      title="Message"
-      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-      srcDoc={doc.html}
-      style={{ height }}
-    />
+    <>
+      <iframe
+        ref={ref}
+        className="html-body"
+        title="Message"
+        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+        srcDoc={doc.html}
+        style={{ height }}
+      />
+      {quoteToggle}
+    </>
   )
 }

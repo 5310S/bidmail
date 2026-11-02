@@ -254,7 +254,7 @@ export function Reader({
         )}
 
         <div className={simple ? 'body-card simple' : 'body-card'}>
-          <MessageBody html={message.html} text={message.text} allowImages={allowImages} simple={simple} fontSize={fontSize} onBlocked={onBlocked} />
+          <MessageBody key={message.key} html={message.html} text={message.text} subject={message.subject} allowImages={allowImages} simple={simple} fontSize={fontSize} onBlocked={onBlocked} />
         </div>
       </div>
     </div>
@@ -580,7 +580,7 @@ function ThreadHistory({ thread, accountId, folder }: { thread: MessageSummary[]
             {d && d !== 'loading' && (
               <div className="thread-body">
                 {d.attachments.length > 0 && <div className="muted small">{d.attachments.length} attachment(s): {d.attachments.map((a) => a.filename).join(', ')}</div>}
-                <MessageBody html={d.html} text={d.text} allowImages={settings.reading.loadRemoteImages} simple={settings.reading.simpleView} fontSize={settings.reading.fontSize} onBlocked={() => {}} />
+                <MessageBody html={d.html} text={d.text} subject={d.subject} allowImages={settings.reading.loadRemoteImages} simple={settings.reading.simpleView} fontSize={settings.reading.fontSize} onBlocked={() => {}} />
               </div>
             )}
           </div>

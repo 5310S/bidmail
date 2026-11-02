@@ -268,6 +268,10 @@ let queue: Promise<unknown> = Promise.resolve()
 
 /** Runs one script (one at a time: Mail answers requests in order anyway). */
 function run(name: ScriptName, args: string[]): Promise<string> {
+  return runScript(SCRIPTS[name], args)
+}
+
+function runScript(script: string, args: string[]): Promise<string> {
   const job = queue.then(
     () =>
       new Promise<string>((resolve, reject) => {
@@ -275,7 +279,7 @@ function run(name: ScriptName, args: string[]): Promise<string> {
           if (err) return reject(new Error(appleMailMessage(String(stderr || err.message))))
           resolve(stdout.replace(/\n$/, ''))
         })
-        child.stdin?.end(HELPERS + SUMMARIES + SCRIPTS[name])
+        child.stdin?.end(HELPERS + SUMMARIES + script)
       })
   )
   queue = job.catch(() => {})
@@ -395,6 +399,26 @@ export const appleMail = {
 
   async search(account: string, folder: string, query: string): Promise<MessageSummary[]> {
     return parseSummaries(await run('search', [account, await box(account, folder), query]))
+  },
+
+  /**
+   * Messages whose subject contains any of `subjects`, or whose people contain any of `people`: the sender for
+   * received mail, any header (To, Cc) for sent mail. Mail answers these from its own index, so they are quick.
+   * The terms reach the script as arguments; only the shape of the condition is written into it.
+   */
+  async find(account: string, folder: string, subjects: string[], people: string[], sent: boolean): Promise<MessageSummary[]> {
+    const terms = [...subjects, ...people]
+    if (!terms.length) return []
+    const conds = terms.map((_, i) => `${i < subjects.length ? 'subject' : sent ? 'all headers' : 'sender'} contains (item ${i + 3} of argv)`)
+    const script = `
+on run argv
+  tell application "Mail"
+    set mb to mailbox (item 2 of argv) of account (item 1 of argv)
+    set ms to a reference to (messages of mb whose ${conds.join(' or ')})
+  end tell
+  return my summaries(ms)
+end run`
+    return parseSummaries(await runScript(script, [account, await box(account, folder), ...terms]))
   },
 
   async summaries(account: string, folder: string, ids: number[]): Promise<MessageSummary[]> {

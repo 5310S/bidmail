@@ -757,3 +757,13 @@ input.money { width: 130px; padding: 4px 8px; text-align: right; font-variant-nu
 .lp-note { display: flex; align-items: center; gap: 4px; font-size: 12px; margin-top: 3px; }
 .lp-note.warn { color: var(--amber); }
 .lp-note.ok { color: var(--ok); }
+
+/* Job folders: the job's emails inside its page */
+.job-mail { height: calc(100vh - 300px); min-height: 480px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.job-mail .msg-pane-title h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-mail-note { padding: 10px 14px; text-align: center; }
+
+/* "Show earlier emails": the older emails quoted under a reply, hidden by default */
+.quote-toggle { display: inline-flex; align-items: center; gap: 8px; margin: 6px 0 2px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--muted); font-size: 12px; cursor: pointer; }
+.quote-toggle:hover { background: var(--hover); color: var(--text); }
+.quote-dots { letter-spacing: 1px; font-size: 10px; }

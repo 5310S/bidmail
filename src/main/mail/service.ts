@@ -1,7 +1,7 @@
 // MailService: IMAP (reading, folders, flags, drafts) via imapflow, SMTP (sending) via nodemailer.
 // Accounts connected through Mac Mail ('applemail') go through ./appleMail instead; each method branches on that.
 import { app } from 'electron'
-import { ImapFlow, FetchMessageObject, ListResponse, MailboxObject } from 'imapflow'
+import { ImapFlow, FetchMessageObject, ListResponse, MailboxObject, SearchObject } from 'imapflow'
 import nodemailer, { Transporter } from 'nodemailer'
 import MailComposer from 'nodemailer/lib/mail-composer'
 import Mail from 'nodemailer/lib/mailer'
@@ -530,6 +530,35 @@ export class MailService extends EventEmitter {
       }
       out.sort((a, b) => b.uid - a.uid)
       return { messages: out, total: (uids as number[]).length, hasMore: false }
+    } finally {
+      lock.release()
+    }
+  }
+
+  /**
+   * Messages whose subject contains any of `subjects`, or that are from (received) / to or cc (sent) any of `people`
+   * (addresses or company domains). Newest first, at most `limit`. Used to gather a job's emails.
+   */
+  async findMessages(accountId: string, folder: string, subjects: string[], people: string[], sent: boolean, limit = 300): Promise<MessageSummary[]> {
+    if (!subjects.length && !people.length) return []
+    const apple = this.apple(accountId)
+    if (apple !== null) return (await appleMail.find(apple, folder, subjects, people, sent)).sort((a, b) => b.uid - a.uid).slice(0, limit)
+    const client = await this.worker(accountId)
+    const lock = await client.getMailboxLock(folder)
+    try {
+      const or: SearchObject[] = [
+        ...subjects.map((subject) => ({ subject })),
+        ...people.flatMap((p): SearchObject[] => (sent ? [{ to: p }, { cc: p }] : [{ from: p }]))
+      ]
+      const uids = ((await client.search(or.length === 1 ? or[0] : { or }, { uid: true })) || []) as number[]
+      const pick = uids.sort((a, b) => b - a).slice(0, limit)
+      const out: MessageSummary[] = []
+      if (pick.length) {
+        for await (const m of client.fetch(pick.join(','), { uid: true, flags: true, envelope: true, bodyStructure: true, internalDate: true, size: true }, { uid: true })) {
+          out.push(summaryFrom(m))
+        }
+      }
+      return out.sort((a, b) => b.uid - a.uid)
     } finally {
       lock.release()
     }

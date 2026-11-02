@@ -1,7 +1,7 @@
 {
   "name": "bidmail",
   "productName": "BidMail",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Email client and bid-invitation tracker for construction estimators",
   "main": "out/main/index.js",
   "author": "BidMail",

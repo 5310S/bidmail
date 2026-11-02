@@ -16,6 +16,7 @@ import { RELEASES_FEED, Updater } from './updater'
 import { publishInstaller } from './updatesFeed'
 import { fetchCertificate } from './net'
 import { LeopardService } from './leopardService'
+import { JobMail } from './jobMail'
 import { readXlsx } from './xlsx'
 import { csvRows, parseVendorList } from '../shared/vendorList'
 import { AccountSaveInput, AppSettings, ComposeData, MailAccount, MessageSummary, PickedFile, TeamSettings } from '../shared/ipc'
@@ -60,6 +61,7 @@ let snoozer: SnoozeService
 let rules: RulesRunner
 const updater = new Updater((s) => send('update:status', s))
 const leopard = new LeopardService(backend)
+const jobMail = new JobMail(mail, backend)
 
 /** Imports new Leopard projects as jobs (after signing in, at start, every few minutes) and tells the screens. */
 function syncLeopardJobs() {
@@ -293,6 +295,7 @@ function registerIpc() {
   handle('mail:delete', (accountId: string, folder: string, uids: number[]) => mail.remove(accountId, folder, uids))
   handle('mail:archive', (accountId: string, folder: string, uids: number[]) => mail.archive(accountId, folder, uids))
   handle('mail:send', (data: ComposeData) => mail.send(data))
+  handle('mail:job', (jobId: string) => jobMail.forJob(jobId))
   handle('mail:draft', (data: ComposeData) => mail.saveDraft(data))
   handle('mail:rsvp', (accountId: string, key: string, status: 'ACCEPTED' | 'TENTATIVE' | 'DECLINED') =>
     mail.respondToInvite(accountId, key, status)

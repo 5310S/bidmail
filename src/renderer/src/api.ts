@@ -8,6 +8,7 @@ import type {
   JobDetail, JobSummary, Milestone, Takeoff, TeamUser, Template, TodaySummary, Trade, TradeTakeoffLine, WorkflowConfig
 } from '../../shared/types'
 import type { MailRule } from '../../shared/rules'
+import type { JobMailResult } from '../../shared/jobMail'
 
 export const invoke = <T = any>(channel: string, ...args: unknown[]): Promise<T> => window.bidmail.invoke(channel, ...args)
 export const on = (channel: string, cb: (payload: any) => void) => window.bidmail.on(channel, cb)
@@ -166,6 +167,8 @@ export const mail = {
   list: (accountId: string, folder: string, offset = 0, limit = 60) => invoke<MessageList>('mail:list', accountId, folder, offset, limit),
   search: (accountId: string, folder: string, q: string) => invoke<MessageList>('mail:search', accountId, folder, q),
   get: (accountId: string, folder: string, uid: number) => invoke<MessageDetail>('mail:get', accountId, folder, uid),
+  /** A job folder: emails to and from the job's companies, or naming the job. */
+  job: (jobId: string) => invoke<JobMailResult>('mail:job', jobId),
   flags: (accountId: string, folder: string, uids: number[], flags: { seen?: boolean; flagged?: boolean }) =>
     invoke('mail:flags', accountId, folder, uids, flags),
   move: (accountId: string, folder: string, uids: number[], dest: string) => invoke('mail:move', accountId, folder, uids, dest),

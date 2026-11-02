@@ -33,6 +33,11 @@ BidMail to Applications. It is not notarized by Apple yet: the first time, **rig
 - **Today** (sidebar): follow-ups due (invited, no answer in N days), trades short on prices, bids due this week, and
   addenda not yet sent to everyone. One click: **Called**, **Email**, **Will Bid**, **Not Bidding**. A morning
   notification summarizes it (set the time on the Today screen).
+- **Job folders** (Mail > Job Folders, or a job's **Email** tab): every email to or from the job's companies, and every
+  email whose subject names the job (its number, or the project's own words like "TOBHA"), from Inbox, Sent and Archive.
+  A company on two open jobs is placed by the subject. Nothing is moved; the emails stay where they are.
+- **One email at a time**: each email shows only what its sender wrote; the older emails quoted under a reply are
+  behind **Show earlier emails**, and the earlier emails of a conversation are closed drop-downs above it.
 - **New Job**: bid due date/time, drawings + spec links, job folder. Start from the standard CSI trades or copy a past job.
 - **Send Drawings**: one personalized email per company with the links; each is stamped **Drawings Sent** with the time.
 - Per company: **Log Follow-Up** (called/emailed), **Enter Price**, and the status menu: **Will Bid** / **Not Bidding**.
