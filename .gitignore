@@ -6,3 +6,6 @@ tests/dist/
 tests/screens/
 *.log
 .DS_Store
+
+# Claude Code settings for this computer only
+.claude/settings.local.json
