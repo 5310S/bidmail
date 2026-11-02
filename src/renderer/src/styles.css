@@ -767,3 +767,7 @@ input.money { width: 130px; padding: 4px 8px; text-align: right; font-variant-nu
 .quote-toggle { display: inline-flex; align-items: center; gap: 8px; margin: 6px 0 2px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--muted); font-size: 12px; cursor: pointer; }
 .quote-toggle:hover { background: var(--hover); color: var(--text); }
 .quote-dots { letter-spacing: 1px; font-size: 10px; }
+
+/* Takeoff import, done: what was set up, to review next */
+.lp-done-list { margin: 8px 0 0; padding-left: 18px; font-weight: normal; }
+.lp-done-list li { margin: 2px 0; }

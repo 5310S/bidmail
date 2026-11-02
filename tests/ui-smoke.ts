@@ -437,7 +437,10 @@ async function main() {
   if (!afterImport.files.some((f: any) => f.name.startsWith('Leopard takeoff - '))) throw new Error('takeoff copy not saved with the job')
   if (![...leo.users.get('estimator@test.local')!.jobs.get('riverside01')!.files.keys()].includes('bidmail-takeoff.json')) throw new Error('takeoff copy not saved in Leopard storage')
   console.log('leopard ok: linked, takeoff imported, trades set up, copies saved in BidMail and Leopard')
-  await page.locator('.modal-foot button', { hasText: 'Send request for bids' }).click()
+  // Next is reviewing the trades and companies; the request for bids goes out from the job after that.
+  await page.locator('.modal-foot button', { hasText: 'Review trades & companies' }).click()
+  await page.waitForSelector('.tabs button.on:has-text("Trades & Companies")')
+  await page.locator('button', { hasText: 'Send Drawings' }).first().click()
   await page.waitForSelector('.bulk-modal')
   if ((await page.locator('.bt-row input:checked').count()) !== 4) throw new Error('the 4 new companies should be selected')
   await page.locator('.seg button', { hasText: 'Preview' }).click()

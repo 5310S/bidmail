@@ -159,7 +159,7 @@ export function JobView({ jobId, initialTab }: { jobId: string; initialTab?: str
             </div>
           </div>
           <TakeoffPanel job={job} extraNames={detail.milestones.map((m) => m.owner)} />
-          <LeopardFact detail={detail} onSendInvites={() => setBulkMode({ mode: 'invite' })} />
+          <LeopardFact detail={detail} onReview={() => setTab('trades')} />
           <div className="fact links">
             <Button icon="external" disabled={!job.drawingsLink} title={job.drawingsLink || 'No drawings link - use Edit Job'} onClick={() => sys.openExternal(job.drawingsLink)}>Drawings</Button>
             <Button icon="external" disabled={!job.specsLink} title={job.specsLink || 'No spec link - use Edit Job'} onClick={() => sys.openExternal(job.specsLink)}>Spec Book</Button>
@@ -244,7 +244,7 @@ export function JobView({ jobId, initialTab }: { jobId: string; initialTab?: str
           onSendInvites={() => setBulkMode({ mode: 'invite' })}
         />
       )}
-      {importing && <ImportTakeoffModal detail={detail} onClose={() => setImporting(false)} onSendInvites={() => { setImporting(false); setBulkMode({ mode: 'invite' }) }} />}
+      {importing && <ImportTakeoffModal detail={detail} onClose={() => setImporting(false)} onReview={() => { setImporting(false); setTab('trades') }} />}
       {tab === 'addenda' && <AddendaTab detail={detail} onSend={(addendumId) => setBulkMode({ mode: 'addendum', addendumId })} />}
       {tab === 'leveling' && <LevelingTab detail={detail} />}
       {tab === 'board' && <BidBoard detail={detail} />}

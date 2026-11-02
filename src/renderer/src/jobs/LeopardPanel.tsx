@@ -15,7 +15,7 @@ const totalsText = (totals: { unit: string; quantity: number }[]) => totals.map(
 const ago = (ms: number | null) => (ms ? fmtDateTime(new Date(ms).toISOString()) : '')
 
 /** The Leopard box in the job header. */
-export function LeopardFact({ detail, onSendInvites }: { detail: JobDetail; onSendInvites: () => void }) {
+export function LeopardFact({ detail, onReview }: { detail: JobDetail; onReview: () => void }) {
   const { go, toast, confirm } = useApp()
   const link = detail.job.leopard
   const [picking, setPicking] = useState(false)
@@ -93,7 +93,7 @@ export function LeopardFact({ detail, onSendInvites }: { detail: JobDetail; onSe
         )}
       </div>
       {picking && <LinkProjectModal detail={detail} onClose={() => setPicking(false)} onLinked={() => { setPicking(false); setImporting(true) }} />}
-      {importing && <ImportTakeoffModal detail={detail} onClose={() => setImporting(false)} onSendInvites={() => { setImporting(false); onSendInvites() }} />}
+      {importing && <ImportTakeoffModal detail={detail} onClose={() => setImporting(false)} onReview={() => { setImporting(false); onReview() }} />}
     </div>
   )
 }
@@ -173,7 +173,8 @@ function LinkProjectModal({ detail, onClose, onLinked }: { detail: JobDetail; on
   )
 }
 
-export function ImportTakeoffModal({ detail, onClose, onSendInvites }: { detail: JobDetail; onClose: () => void; onSendInvites: () => void }) {
+/** Imports the takeoff, sets up trades and companies, then sends you to review them (emails come after that). */
+export function ImportTakeoffModal({ detail, onClose, onReview }: { detail: JobDetail; onClose: () => void; onReview: () => void }) {
   const { toast } = useApp()
   const [res, setRes] = useState<TakeoffAnalysisResult | null>(null)
   const [error, setError] = useState('')
@@ -253,7 +254,7 @@ export function ImportTakeoffModal({ detail, onClose, onSendInvites }: { detail:
           <>
             <span className="grow" />
             <Button onClick={onClose}>Close</Button>
-            <Button kind="primary" icon="send" onClick={onSendInvites}>Send request for bids</Button>
+            <Button kind="primary" icon="users" onClick={onReview}>Review trades & companies</Button>
           </>
         ) : (
           <>
@@ -278,7 +279,24 @@ export function ImportTakeoffModal({ detail, onClose, onSendInvites }: { detail:
               {applied.created + applied.updated} trade{applied.created + applied.updated === 1 ? '' : 's'} set up with their takeoff quantities
               {applied.companies ? `, ${applied.companies} compan${applied.companies === 1 ? 'y' : 'ies'} added from your vendor list` : ''}.
             </b>
-            <div>Next: <b>Send request for bids</b>. Each company's email lists the quantities for its own trade.</div>
+            <div>
+              Next: <b>review the trades and companies</b>. Remove any company you don't want to invite, add others, and check each
+              trade's quantities. Then send the request for bids from the job (<b>Send Drawings</b>); each company's email lists the
+              quantities for its own trade.
+            </div>
+            <ul className="lp-done-list">
+              {res.packages
+                .filter((p) => chosen.has(p.tradeName))
+                .map((p) => {
+                  const n = picks[p.tradeName]?.length ?? 0
+                  return (
+                    <li key={p.tradeName}>
+                      <b>{p.existingTradeName || p.tradeName}</b>: {p.lines.length} item{p.lines.length === 1 ? '' : 's'}
+                      {n ? `, ${n} compan${n === 1 ? 'y' : 'ies'} added` : ', no companies yet'}
+                    </li>
+                  )
+                })}
+            </ul>
           </div>
         </div>
       ) : (
