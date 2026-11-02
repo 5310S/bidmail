@@ -4,10 +4,12 @@ Email and bid-invitation tracking for construction estimators, for Windows and m
 
 ## Install
 
-**Windows:** run `release\BidMail-Setup-1.2.0.exe`. The installer is not code-signed yet, so Windows may show
+Download the installer for your computer from the repository's **Releases** page (each `v*` tag publishes one).
+
+**Windows:** run the `BidMail Setup` `.exe`. The installer is not code-signed yet, so Windows may show
 "Windows protected your PC". Click **More info > Run anyway**.
 
-**Mac:** open `BidMail-1.2.0-mac-arm64.dmg` (Apple Silicon: M1-M4) or `BidMail-1.2.0-mac-x64.dmg` (Intel) and drag
+**Mac:** open `BidMail-<version>-mac-arm64.dmg` (Apple Silicon: M1 and later) or `BidMail-<version>-mac-x64.dmg` (Intel) and drag
 BidMail to Applications. It is not notarized by Apple yet: the first time, **right-click BidMail > Open**, then **Open**
 (on recent macOS: **System Settings > Privacy & Security > Open Anyway**). See "Building the Mac version" below.
 
@@ -16,8 +18,9 @@ BidMail to Applications. It is not notarized by Apple yet: the first time, **rig
 1. **Settings > Profile**: your name and company (used in templates as `{{my_name}}` / `{{my_company}}`).
 2. **Settings > Email Accounts > Add Account**:
    - **Sign in with Microsoft** (Microsoft 365 / work Outlook, Outlook.com) or **Sign in with Google** (Gmail / Workspace):
-     your normal login in the browser, no app password. Needs the one-time company setup below.
-   - **Other email (password)**: company mail servers, Yahoo, iCloud, or Gmail/Outlook with an *app password*.
+     your normal login in the browser, no app password. Built into release builds (see "Releasing" below).
+     Outlook.com and Microsoft 365 no longer accept passwords from email apps, so Outlook accounts must use this.
+   - **Other email (password)**: company mail servers, Yahoo, iCloud, or Gmail with an *app password*.
 3. **Companies**: add your subs or **Import CSV** (columns like Company, Contact, Email, Phone, Trade, GL Expires,
    WC Expires, Bonding Limit, Union, Certifications, License, Prequalified).
 
@@ -104,11 +107,20 @@ standalone server, copy `latest.yml` and `BidMail-Setup-x.y.z.exe` from `release
 Each app downloads it in the background and shows **Version x ready - restart**. (Mac automatic updates need an
 Apple Developer ID signature; until then Mac users install new versions from the .dmg.)
 
-## Sign in with Microsoft / Google (one-time company setup)
+## Sign in with Microsoft / Google
 
-Microsoft and Google only allow mail sign-in from apps your organization registers. Whoever manages your company's
-Microsoft 365 or Google Workspace does this once; paste the IDs into **Settings > Email Accounts > Sign-in setup**
-on each computer.
+Microsoft and Google only allow mail sign-in from registered apps. BidMail's own registrations are built into release
+builds from these GitHub repository settings (**Settings > Secrets and variables > Actions**):
+
+| Name | Kind | Value |
+| --- | --- | --- |
+| `BIDMAIL_MS_CLIENT_ID` | variable | Microsoft *Application (client) ID* |
+| `BIDMAIL_GOOGLE_CLIENT_ID` | variable | Google OAuth client ID (`...apps.googleusercontent.com`) |
+| `BIDMAIL_GOOGLE_CLIENT_SECRET` | secret | Google OAuth client secret |
+
+For a local build, set the same names as environment variables before `npm run dist:mac` / `npm run dist`.
+A company that wants its own registration instead pastes its IDs into **Settings > Email Accounts > Sign-in setup**;
+those win over the built-in ones. Either way the registration steps are:
 
 **Microsoft 365** (Azure portal, about 10 minutes):
 1. portal.azure.com > **Microsoft Entra ID** > **App registrations** > **New registration**. Name: BidMail. Supported
@@ -124,7 +136,15 @@ on each computer.
 **Google Workspace / Gmail** (console.cloud.google.com):
 1. Create a project, enable the **Gmail API**.
 2. **OAuth consent screen**: User type *Internal* (Workspace) so no Google review is needed; add scope `https://mail.google.com/`.
+   For the built-in registration (personal Gmail too) the type is *External*. Until Google verifies the app, only the
+   test users listed on the consent screen (up to 100) can sign in, and their sign-in lasts 7 days.
 3. **Credentials > Create credentials > OAuth client ID > Desktop app**. Copy the client ID and client secret.
+
+## Releasing
+
+1. Bump `version` in `package.json` and commit.
+2. Tag and push: `git tag v1.4.0 && git push origin main v1.4.0`.
+3. **Actions > Build BidMail** builds Mac, Windows and Linux and publishes them on the **Releases** page.
 
 ## Building the Mac version
 

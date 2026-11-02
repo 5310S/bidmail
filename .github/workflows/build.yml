@@ -1,6 +1,9 @@
 # Builds the Mac (Apple Silicon + Intel), Windows and Arch Linux apps in the cloud.
 # Run it from the repository's Actions tab ("Run workflow"), or by pushing a tag like v1.0.1.
-# The finished installers are attached to the run under "Artifacts".
+# The finished installers are attached to the run under "Artifacts"; for a tag they are also published as a GitHub Release.
+#
+# Sign in with Microsoft / Google is built in from these repository settings (Settings > Secrets and variables > Actions):
+#   variables: BIDMAIL_MS_CLIENT_ID, BIDMAIL_GOOGLE_CLIENT_ID    secret: BIDMAIL_GOOGLE_CLIENT_SECRET
 name: Build BidMail
 
 on:
@@ -42,8 +45,35 @@ jobs:
       - run: npm run ${{ matrix.script }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          BIDMAIL_MS_CLIENT_ID: ${{ vars.BIDMAIL_MS_CLIENT_ID }}
+          BIDMAIL_GOOGLE_CLIENT_ID: ${{ vars.BIDMAIL_GOOGLE_CLIENT_ID }}
+          BIDMAIL_GOOGLE_CLIENT_SECRET: ${{ secrets.BIDMAIL_GOOGLE_CLIENT_SECRET }}
       - uses: actions/upload-artifact@v4
         with:
           name: BidMail-${{ runner.os }}
           path: ${{ matrix.files }}
           if-no-files-found: error
+
+  release:
+    # Tags only: puts the Mac, Windows and Linux installers on the repository's Releases page.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - run: find dist -type f | sort
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          mapfile -d '' files < <(find dist -type f -print0)  # the Windows installer name has spaces
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber -R "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "${files[@]}" --title "BidMail ${TAG#v}" --generate-notes -R "$GITHUB_REPOSITORY"
+          fi

@@ -932,7 +932,7 @@ export function friendlyError(e: any, host: string): string {
   const code = e?.code || e?.cause?.code
   const msg = String(e?.responseText || e?.response || e?.message || e)
   if (e?.authenticationFailed || /auth|credentials|password|login/i.test(msg) || code === 'EAUTH')
-    return 'Sign-in was rejected. Check the username and password. Gmail, Yahoo, iCloud and Outlook require an "app password" (not your normal password).'
+    return 'Sign-in was rejected. Outlook, Hotmail and Microsoft 365 no longer accept passwords from email apps: add the account with "Sign in with Microsoft" instead. Gmail, Yahoo and iCloud need an "app password" (not your normal password), or use "Sign in with Google" for Gmail.'
   if (code === 'ENOTFOUND') return `Server "${host}" was not found. Check the server name.`
   if (code === 'ECONNREFUSED') return `Server "${host}" refused the connection. Check the port and security setting.`
   if (code === 'ETIMEDOUT' || code === 'ESOCKET' || code === 'ECONNECTION') return `Could not connect to "${host}". Check the port, security setting, and your internet connection.`

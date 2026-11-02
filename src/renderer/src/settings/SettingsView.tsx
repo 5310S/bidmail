@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { MailAccount, OAuthSettings } from '../../../shared/ipc'
+import { BUILT_IN_OAUTH } from '../../../shared/oauthBuiltIn'
 import { accounts as accountsApi } from '../api'
 import { TeamTab } from './TeamTab'
 import { AboutTab } from './AboutTab'
@@ -20,23 +21,28 @@ interface Preset {
   smtp: { host: string; port: number; secure: boolean }
   saveSentCopy: boolean
   help: string
+  /** Providers that sign in in the browser instead: the password form points there. */
+  signIn?: { provider: 'microsoft' | 'google'; passwordWorks: boolean }
 }
 
 const PRESETS: Preset[] = [
   {
     id: 'gmail', label: 'Gmail / Google Workspace', domains: /gmail\.com|googlemail\.com/i,
     imap: { host: 'imap.gmail.com', port: 993, secure: true }, smtp: { host: 'smtp.gmail.com', port: 465, secure: true }, saveSentCopy: false,
-    help: 'Use a Google "App password": Google Account > Security > 2-Step Verification > App passwords. Your normal Gmail password will not work.'
+    help: 'Use a Google "App password": Google Account > Security > 2-Step Verification > App passwords. Your normal Gmail password will not work.',
+    signIn: { provider: 'google', passwordWorks: true }
   },
   {
     id: 'm365', label: 'Microsoft 365 (work Outlook)', domains: /$^/,
     imap: { host: 'outlook.office365.com', port: 993, secure: true }, smtp: { host: 'smtp.office365.com', port: 587, secure: false }, saveSentCopy: false,
-    help: 'Your IT admin must allow IMAP and "Authenticated SMTP" for your mailbox. If sign-in is rejected, ask them to enable it or create an app password.'
+    help: 'Microsoft 365 no longer accepts passwords from email apps. Use "Sign in with Microsoft" instead.',
+    signIn: { provider: 'microsoft', passwordWorks: false }
   },
   {
     id: 'outlook', label: 'Outlook.com / Hotmail', domains: /outlook\.com|hotmail\.com|live\.com|msn\.com/i,
     imap: { host: 'outlook.office365.com', port: 993, secure: true }, smtp: { host: 'smtp-mail.outlook.com', port: 587, secure: false }, saveSentCopy: false,
-    help: 'Turn on two-step verification and create an app password at account.microsoft.com > Security.'
+    help: 'Outlook.com no longer accepts passwords (or app passwords) from email apps. Use "Sign in with Microsoft" instead.',
+    signIn: { provider: 'microsoft', passwordWorks: false }
   },
   {
     id: 'yahoo', label: 'Yahoo Mail', domains: /yahoo\.|ymail\.com/i,
@@ -157,7 +163,8 @@ function AccountEditor({ account, onClose }: { account: MailAccount | null; onCl
 function useOAuthSignIn(onDone: () => void) {
   const { reloadAccounts, toast, settings } = useApp()
   const [busy, setBusy] = useState<'microsoft' | 'google' | null>(null)
-  const configured = (p: 'microsoft' | 'google') => (p === 'microsoft' ? !!settings.oauth.microsoftClientId : !!settings.oauth.googleClientId)
+  const configured = (p: 'microsoft' | 'google') =>
+    p === 'microsoft' ? !!(settings.oauth.microsoftClientId || BUILT_IN_OAUTH.microsoftClientId) : !!(settings.oauth.googleClientId || BUILT_IN_OAUTH.googleClientId)
   const signIn = async (p: 'microsoft' | 'google', existingId?: string) => {
     setBusy(p)
     try {
@@ -195,7 +202,7 @@ function ChooseMethod({ onPassword, onClose }: { onPassword: () => void; onClose
           <span className="method-logo other"><Icon name="mail" size={18} /></span>
           <span className="grow">
             <b>Other email (password)</b>
-            <span className="muted small">Company mail server, Yahoo, iCloud, or Gmail/Outlook with an app password.</span>
+            <span className="muted small">Company mail server, Yahoo, iCloud, or Gmail with an app password.</span>
           </span>
           <Icon name="chevronRight" />
         </button>
@@ -244,18 +251,27 @@ function SignInSetup({ open: startOpen }: { open?: boolean }) {
   const { settings, updateSettings, toast } = useApp()
   const [open, setOpen] = useState(!!startOpen)
   const [o, setO] = useState<OAuthSettings>(settings.oauth)
+  const builtIn = !!(BUILT_IN_OAUTH.microsoftClientId || BUILT_IN_OAUTH.googleClientId)
   return (
     <div className="card form-card" style={{ marginTop: 14 }}>
       <button className="link-btn" style={{ fontWeight: 600 }} onClick={() => setOpen(!open)}>
-        <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} /> Sign-in setup for Microsoft & Google (one time, per company)
+        <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />{' '}
+        {builtIn ? "Advanced: use your company's own Microsoft / Google registration (optional)" : 'Sign-in setup for Microsoft & Google (one time, per company)'}
       </button>
       {open && (
         <>
-          <p className="muted small">
-            Microsoft and Google only allow mail sign-in from apps registered by your organization. Whoever manages your Microsoft 365 or
-            Google Workspace registers BidMail once (free, about 10 minutes; step-by-step instructions are in README.md under
-            "Sign in with Microsoft / Google") and pastes the IDs here. Then everyone signs in with their normal work login.
-          </p>
+          {builtIn ? (
+            <p className="muted small">
+              Sign in with Microsoft / Google works out of the box. Only fill these in if your IT department wants BidMail to use your
+              company's own app registration instead (see README.md, "Sign in with Microsoft / Google"). Leave them blank otherwise.
+            </p>
+          ) : (
+            <p className="muted small">
+              Microsoft and Google only allow mail sign-in from apps registered by your organization. Whoever manages your Microsoft 365 or
+              Google Workspace registers BidMail once (free, about 10 minutes; step-by-step instructions are in README.md under
+              "Sign in with Microsoft / Google") and pastes the IDs here. Then everyone signs in with their normal work login.
+            </p>
+          )}
           <div className="form-grid">
             <Field label="Microsoft application (client) ID"><input value={o.microsoftClientId} onChange={(e) => setO({ ...o, microsoftClientId: e.target.value.trim() })} placeholder="00000000-0000-0000-0000-000000000000" /></Field>
             <Field label="Microsoft tenant" hint="'common' works for most; or your tenant ID / domain."><input value={o.microsoftTenant} onChange={(e) => setO({ ...o, microsoftTenant: e.target.value.trim() })} /></Field>
@@ -271,6 +287,7 @@ function SignInSetup({ open: startOpen }: { open?: boolean }) {
 
 function PasswordAccountEditor({ account, onClose }: { account: MailAccount | null; onClose: () => void }) {
   const { reloadAccounts, toast, settings } = useApp()
+  const oauth = useOAuthSignIn(onClose)
   const [a, setA] = useState<MailAccount>(
     account ?? {
       id: '', displayName: settings.userName, email: '', signature: '',
@@ -355,6 +372,19 @@ function PasswordAccountEditor({ account, onClose }: { account: MailAccount | nu
         </>
       }
     >
+      {!account && p?.signIn && (
+        <div className={p.signIn.passwordWorks ? 'ok-box' : 'warn-box'} style={{ marginBottom: 12 }}>
+          <Icon name={p.signIn.passwordWorks ? 'check' : 'alert'} />
+          <span className="grow">
+            {p.signIn.passwordWorks
+              ? 'Easier: sign in with your normal Google login in the browser, no app password needed.'
+              : 'Microsoft no longer accepts passwords from email apps, so this form will be rejected. Sign in with your normal Microsoft login in the browser instead.'}
+          </span>
+          <Button kind="primary" disabled={!!oauth.busy} onClick={() => oauth.signIn(p.signIn!.provider)}>
+            {oauth.busy ? 'Waiting for browser...' : `Sign in with ${p.signIn.provider === 'microsoft' ? 'Microsoft' : 'Google'}`}
+          </Button>
+        </div>
+      )}
       <div className="form-grid">
         <Field label="Email address"><input autoFocus={!account} value={a.email} onChange={(e) => onEmail(e.target.value.trim())} placeholder="you@company.com" /></Field>
         <Field label="Your name (as recipients see it)"><input value={a.displayName} onChange={(e) => setA({ ...a, displayName: e.target.value })} /></Field>

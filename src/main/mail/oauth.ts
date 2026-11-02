@@ -23,9 +23,11 @@ export interface OAuthProvider {
 }
 
 import type { OAuthSettings } from '../../shared/ipc'
+import { BUILT_IN_OAUTH } from '../../shared/oauthBuiltIn'
 
 export const DEFAULT_OAUTH: OAuthSettings = { microsoftClientId: '', microsoftTenant: 'common', googleClientId: '', googleClientSecret: '' }
 
+/** The company's own client IDs from Settings when filled in, otherwise the ones built into this release. */
 export function providerFor(id: OAuthProviderId, s: OAuthSettings): OAuthProvider {
   if (id === 'microsoft') {
     const tenant = (s.microsoftTenant || 'common').trim()
@@ -34,20 +36,22 @@ export function providerFor(id: OAuthProviderId, s: OAuthSettings): OAuthProvide
       authUrl: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize`,
       tokenUrl: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
       scopes: ['openid', 'email', 'profile', 'offline_access', 'https://outlook.office.com/IMAP.AccessAsUser.All', 'https://outlook.office.com/SMTP.Send'],
-      clientId: s.microsoftClientId.trim(),
+      clientId: s.microsoftClientId.trim() || BUILT_IN_OAUTH.microsoftClientId,
       extraAuthParams: { prompt: 'select_account' },
       redirectHost: 'localhost',
       imap: { host: 'outlook.office365.com', port: 993, secure: true },
       smtp: { host: 'smtp.office365.com', port: 587, secure: false }
     }
   }
+  // The secret belongs to whichever client ID is used: the company's own, or the built-in one.
+  const ownGoogle = s.googleClientId.trim()
   return {
     id, label: 'Google',
     authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
     scopes: ['openid', 'email', 'profile', 'https://mail.google.com/'],
-    clientId: s.googleClientId.trim(),
-    clientSecret: s.googleClientSecret.trim() || undefined,
+    clientId: ownGoogle || BUILT_IN_OAUTH.googleClientId,
+    clientSecret: (ownGoogle ? s.googleClientSecret.trim() : process.env.BIDMAIL_GOOGLE_CLIENT_SECRET) || undefined,
     extraAuthParams: { access_type: 'offline', prompt: 'consent select_account' },
     redirectHost: '127.0.0.1',
     imap: { host: 'imap.gmail.com', port: 993, secure: true },
