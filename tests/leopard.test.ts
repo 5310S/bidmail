@@ -265,3 +265,57 @@ test('importing a takeoff saves a copy with the job and in Leopard storage, then
     await m.close()
   }
 })
+test('signing in brings every Leopard project in as a linked job, once', async () => {
+  const m = await startMockLeopard()
+  const backend = new BidBackend(() => 'Kei', () => {}, () => {})
+  try {
+    const email = 'mike@5310s.com'
+    const password = 'leopard-pass'
+    const project = (id: string, info: object, takeoff: object | null = null, extra: object = {}) => ({
+      job: { id, files: [], attachments: [], changed: Date.now(), ...info, ...extra },
+      takeoff: takeoff ? JSON.stringify(takeoff) : null,
+      saved: takeoff ? Date.now() : null,
+      files: new Map()
+    })
+    const jobs = new Map<string, any>()
+    jobs.set('tobha01', project('tobha01', { name: 'TOBHA Facade', number: '', location: 'Oyster Bay' }, { info: { number: '25-011', bidDate: '2026-11-20', client: 'Town of Oyster Bay Housing', estimator: 'Kei' }, items: [] }))
+    jobs.set('smith01', project('smith01', { name: "Smithtown Clerk's Office", number: '25-004', location: 'Smithtown' }))
+    jobs.set('gone01', project('gone01', { name: 'Deleted project', number: '' }, null, { deleted: Date.now() }))
+    m.users.set(email, { password, jobs })
+    await backend.configure({ mode: 'local', url: '', key: '', port: 0 } as any)
+    saveSettings({ leopard: { url: m.url, email: '', cookie: '', importedProjects: [] } })
+    const svc = new LeopardService(backend)
+    assert.deepEqual(await svc.syncJobs(), { created: 0, linked: 0 }, 'signed out: nothing to do')
+
+    // A job already in BidMail with the same number is linked, not duplicated, and its blanks filled in.
+    const existing = await backend.call('createJob', [{ name: 'Smithtown Clerk', number: '25-004' }])
+    await svc.login(m.url, email, password)
+    assert.deepEqual(await svc.syncJobs(), { created: 1, linked: 1 })
+
+    const all = () => backend.call('listJobs', [])
+    const byProject = async (id: string) => (await all()).find((j: any) => j.leopard?.projectId === id)
+    const tobha = await byProject('tobha01')
+    assert.equal(tobha.name, 'TOBHA Facade')
+    assert.equal(tobha.number, '25-011', "the takeoff's job number when the project has none")
+    assert.equal(tobha.location, 'Oyster Bay')
+    assert.equal(tobha.client, 'Town of Oyster Bay Housing')
+    assert.equal(tobha.bidDue, new Date(2026, 10, 20, 12, 0).toISOString(), 'bid date at noon, to be corrected')
+    assert.equal(tobha.status, 'bidding', 'shows under Open')
+    assert.equal(tobha.takeoff.assignee, 'Kei', "Leopard's estimator does the takeoff")
+    const smith = await byProject('smith01')
+    assert.equal(smith.id, existing.id)
+    assert.equal(smith.location, 'Smithtown')
+    assert.equal(smith.name, 'Smithtown Clerk', 'names typed in BidMail are kept')
+    assert.ok(!(await byProject('gone01')), "Leopard's Recently deleted is skipped")
+
+    assert.deepEqual(await svc.syncJobs(), { created: 0, linked: 0 }, 'nothing twice')
+    await backend.call('deleteJob', [tobha.id])
+    assert.deepEqual(await svc.syncJobs(), { created: 0, linked: 0 }, 'a job deleted in BidMail stays deleted')
+    jobs.set('new01', project('new01', { name: 'EES Maintenance Barn', number: '' }))
+    assert.deepEqual(await svc.syncJobs(), { created: 1, linked: 0 }, 'a new Leopard project arrives on the next pass')
+    assert.equal((await byProject('new01')).bidDue, null, 'no takeoff yet: no bid date')
+  } finally {
+    await backend.configure({ mode: 'local', url: '', key: '', port: 0 } as any).catch(() => {})
+    await m.close()
+  }
+})

@@ -21,7 +21,7 @@ const DEFAULTS: AppSettings = {
   oauth: DEFAULT_OAUTH,
   reminders: DEFAULT_REMINDERS,
   updates: { url: '', enabled: true },
-  leopard: { url: LEOPARD_DEFAULT_URL, email: '', cookie: '' }
+  leopard: { url: LEOPARD_DEFAULT_URL, email: '', cookie: '', importedProjects: [] }
 }
 
 let cache: AppSettings | null = null

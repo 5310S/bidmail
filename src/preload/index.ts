@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
-const ALLOWED_EVENTS = ['bid:changed', 'bid:status', 'mail:new', 'mail:open', 'mail:accountStatus', 'bulk:progress', 'menu:compose', 'update:status', 'nav:go']
+const ALLOWED_EVENTS = ['bid:changed', 'bid:status', 'mail:new', 'mail:open', 'mail:accountStatus', 'bulk:progress', 'menu:compose', 'update:status', 'nav:go', 'leopard:imported']
 
 contextBridge.exposeInMainWorld('bidmail', {
   invoke: async (channel: string, ...args: unknown[]) => {

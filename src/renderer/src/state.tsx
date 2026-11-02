@@ -163,6 +163,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setView(v)
       }),
       on('update:status', (u: UpdateStatus) => setUpdate(u)),
+      on('leopard:imported', (r: { created: number; linked: number }) => {
+        const parts = [r.created && `${r.created} new job${r.created === 1 ? '' : 's'}`, r.linked && `${r.linked} existing job${r.linked === 1 ? '' : 's'} linked`]
+        toast(`From Leopard: ${parts.filter(Boolean).join(', ')}`, 'success')
+      }),
       on('mail:accountStatus', (s: { accountId: string; online: boolean }) =>
         setAccountOnline((p) => ({ ...p, [s.accountId]: s.online }))
       )
@@ -172,7 +176,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       offs.forEach((o) => o())
       clearInterval(timer)
     }
-  }, [reloadAccounts, reloadFolders])
+  }, [reloadAccounts, reloadFolders, toast])
 
   useEffect(() => {
     bid.listJobs().then(setJobs).catch(() => {})

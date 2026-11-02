@@ -61,6 +61,18 @@ let rules: RulesRunner
 const updater = new Updater((s) => send('update:status', s))
 const leopard = new LeopardService(backend)
 
+/** Imports new Leopard projects as jobs (after signing in, at start, every few minutes) and tells the screens. */
+function syncLeopardJobs() {
+  leopard
+    .syncJobs()
+    .then((r) => {
+      if (r.created || r.linked) send('leopard:imported', r)
+    })
+    .catch(() => {
+      /* signed out or offline: the next pass tries again */
+    })
+}
+
 /** The team server hosts updates for its teammates unless a different folder is set. */
 function configureUpdates() {
   const s = getSettings()
@@ -112,7 +124,12 @@ function registerIpc() {
 
   // Leopard (takeoff software)
   handle('leopard:status', () => leopard.status())
-  handle('leopard:login', (url: string, email: string, password: string) => leopard.login(url, email, password))
+  handle('leopard:login', async (url: string, email: string, password: string) => {
+    const s = await leopard.login(url, email, password)
+    syncLeopardJobs()
+    return s
+  })
+  handle('leopard:syncJobs', () => leopard.syncJobs())
   handle('leopard:logout', () => leopard.logout())
   handle('leopard:projects', () => leopard.projects())
   handle('leopard:link', (jobId: string, projectId: string | null) => leopard.link(jobId, projectId))
@@ -573,6 +590,8 @@ if (!app.requestSingleInstanceLock()) {
     mail.startWatchers()
     snoozer.start()
     configureUpdates()
+    syncLeopardJobs()
+    setInterval(syncLeopardJobs, 5 * 60_000)
     startReminders({
       get: () => getSettings().reminders,
       markNotified: (day) => saveSettings({ reminders: { ...getSettings().reminders, lastNotified: day } }),

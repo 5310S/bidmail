@@ -70,8 +70,9 @@ export function LeopardTab() {
       <div className="card form-card leopard-card">
         <h3><Icon name="grid" /> Leopard takeoff</h3>
         <p className="muted">
-          Connect BidMail to Leopard to link each job to its Leopard project, save the takeoff with the job, and turn its quantities
-          into trades and request-for-bid emails. BidMail uses your Leopard account's storage (10 GB).
+          Connect BidMail to Leopard and every Leopard project shows up under Jobs, linked to its project (new ones within a few
+          minutes). Save the takeoff with the job and turn its quantities into trades and request-for-bid emails. BidMail uses
+          your Leopard account's storage (10 GB).
         </p>
         {status.signedIn ? (
           <>
@@ -85,7 +86,16 @@ export function LeopardTab() {
             {status.error && <div className="warn-box small">{status.error}</div>}
             <div className="form-actions" style={{ justifyContent: 'flex-start' }}>
               <Button icon="external" onClick={() => leopardApi.open()}>Open Leopard</Button>
-              <Button icon="refresh" onClick={() => leopardApi.status().then(setStatus)}>Refresh</Button>
+              <Button
+                icon="refresh"
+                onClick={async () => {
+                  setStatus(await leopardApi.status())
+                  const r = await leopardApi.syncJobs().catch((e: any) => (toast(e.message, 'error'), null))
+                  if (r && !r.created && !r.linked) toast('Jobs are up to date with Leopard', 'success')
+                }}
+              >
+                Refresh
+              </Button>
               <Button kind="danger" disabled={busy} onClick={signOut}>Sign out</Button>
             </div>
           </>

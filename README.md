@@ -70,7 +70,12 @@ What BidMail does with Leopard: download the takeoff done in Leopard, analyze it
 
 1. **Sign in to Leopard** (Settings > Leopard) with the same email as one of your mail accounts, or a separate Leopard email, plus your Leopard password. BidMail keeps only Leopard's sign-in (encrypted on this computer), never your password.
 2. **Import your vendor list** (Companies > Import Vendor List): your Excel sheet (.xlsx, or CSV) with columns like *Category, Company Name, Full Name, Business Phone, Email, Type*. The header row is found automatically, even below a title row. Each company's Category becomes its trades ("Concrete/Excavation" means it bids Concrete and Excavation). Type fills MBE/WBE/DBE and Union. Re-importing updates the companies already there.
-3. **Link the job** to its Leopard project (Leopard box in the job header). The closest match by name or job number is suggested.
+3. **Jobs come in from Leopard by themselves.** Once you're signed in, every Leopard project shows up under Jobs, linked
+   to its project: right after signing in, when Jobs opens, and every 5 minutes after that. BidMail fills in the name,
+   number and location, plus the bid date (at noon, so set the real time), client and estimator from the takeoff when
+   one is saved. An existing job with the same job number or name is linked instead of duplicated, and a job you delete in
+   BidMail is not brought back. Projects in Leopard's Recently deleted are skipped. To link a job by hand, use the Leopard
+   box in the job header; the closest match by name or job number is suggested.
 4. **Import takeoff.** BidMail downloads the takeoff, saves a copy with the job files and a summary in the Leopard project's storage (one `bidmail-takeoff.json`, replaced on each import), and works out the quantities the way Leopard's estimate does. Then it groups the items by trade (each item's trade in Leopard, or its CSI code). For every trade it lists the companies from your vendor list whose Category covers that trade: "Concrete" picks Concrete, Concrete/Excavation and Demo/Concrete companies (typos like "Contrete" too), but not Epoxy/Polished Concrete. Uncheck any or add others, then **Set up**: the trades get their quantities, and the companies are added to them.
 5. **Send request for bids.** The companies that haven't been emailed are selected, and each email includes the quantities for that company's own trade (`{{takeoff_quantities}}`). Items measured as a cost in Leopard are your pricing: they show in BidMail but are never put in an email.
 

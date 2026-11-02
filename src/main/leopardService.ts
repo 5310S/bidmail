@@ -4,8 +4,8 @@
 import { getSettings, saveSettings } from './settings'
 import { LeopardAuthError, LeopardClient, LeopardGoneError, normalizeLeopardUrl } from './leopard'
 import type { BidBackend } from './bidBackend'
-import type { LeopardCheck, LeopardProjectInfo, LeopardStatus, TakeoffAnalysisResult } from '../shared/ipc'
-import type { JobDetail } from '../shared/types'
+import type { LeopardCheck, LeopardProjectInfo, LeopardStatus, LeopardSyncResult, TakeoffAnalysisResult } from '../shared/ipc'
+import type { Job, JobDetail, JobSummary } from '../shared/types'
 import { fmtQty, matchTrade, normalizeTakeoff, packageTakeoff } from '../shared/takeoffAnalysis'
 import { leopardQuantity } from '../shared/leopardQuantity'
 
@@ -21,8 +21,17 @@ const csvCell = (v: unknown) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
+/** Leopard's bid date ("2026-11-20", date only) as a bid due time: noon that day, to be corrected in the job. */
+function bidDueFrom(v: unknown): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? ''))
+  if (!m) return null
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0).toISOString()
+}
+const same = (a: string, b: string) => !!a.trim() && a.trim().toLowerCase() === b.trim().toLowerCase()
+
 export class LeopardService {
   private lastStatus: LeopardStatus | null = null
+  private syncing: Promise<LeopardSyncResult> | null = null
 
   constructor(private backend: BidBackend) {}
 
@@ -84,6 +93,63 @@ export class LeopardService {
     return this.backend.call('linkLeopard', [jobId, { projectId: p.id, projectName: p.name, url: c.projectUrl(p.id) }])
   }
 
+
+  /**
+   * Brings every Leopard project in as a BidMail job, linked to it. A project is imported once: an unlinked job with
+   * the same number (or name) is linked instead of creating a duplicate, and a job deleted in BidMail stays deleted.
+   * Fields come from the project (name, number, location) and its takeoff's info (bid date, client, estimator).
+   */
+  syncJobs(): Promise<LeopardSyncResult> {
+    if (!this.syncing) this.syncing = this.runSync().finally(() => (this.syncing = null))
+    return this.syncing
+  }
+
+  private async runSync(): Promise<LeopardSyncResult> {
+    const result: LeopardSyncResult = { created: 0, linked: 0 }
+    if (!getSettings().leopard.cookie) return result
+    const projects = await this.use((c) => c.projects())
+    const jobs: JobSummary[] = await this.backend.call('listJobs', [])
+    const linked = new Set(jobs.map((j) => j.leopard?.projectId).filter(Boolean))
+    const imported = new Set(getSettings().leopard.importedProjects ?? [])
+    const c = this.client()
+    // Oldest first, so jobs are created in the order the projects were.
+    for (const p of [...projects].reverse()) {
+      if (linked.has(p.id) || imported.has(p.id)) {
+        imported.add(p.id)
+        continue
+      }
+      const link = { projectId: p.id, projectName: p.name, url: c.projectUrl(p.id) }
+      const match = jobs.find((j) => !j.leopard && (same(j.number, p.number) || same(j.name, p.name)))
+      if (match) {
+        const fill: Partial<Job> = {}
+        if (!match.number && p.number) fill.number = p.number
+        if (!match.location && p.location) fill.location = p.location
+        if (Object.keys(fill).length) await this.backend.call('updateJob', [match.id, fill])
+        await this.backend.call('linkLeopard', [match.id, link])
+        match.leopard = link as Job['leopard']
+        result.linked++
+      } else {
+        // The takeoff's info has what the project list doesn't (bid date, client, estimator), when one is saved.
+        let info: any = {}
+        if (p.takeoffSaved) info = (await this.use((cl) => cl.takeoff(p.id)).catch(() => null))?.data?.info ?? {}
+        const job: Job = await this.backend.call('createJob', [
+          {
+            name: p.name,
+            number: p.number || String(info.number ?? ''),
+            location: p.location || String(info.location ?? ''),
+            client: String(info.client ?? info.owner ?? info.gc ?? ''),
+            bidDue: bidDueFrom(info.bidDate ?? info.bidDue ?? info.dueDate)
+          }
+        ])
+        await this.backend.call('linkLeopard', [job.id, link])
+        if (info.estimator) await this.backend.call('setTakeoff', [job.id, { assignee: String(info.estimator) }])
+        result.created++
+      }
+      imported.add(p.id)
+    }
+    saveSettings({ leopard: { ...getSettings().leopard, importedProjects: [...imported] } })
+    return result
+  }
 
   /** Imports the linked project's takeoff: saves a copy, analyzes it into trade packages, syncs the takeoff card. */
   async importTakeoff(jobId: string): Promise<TakeoffAnalysisResult> {

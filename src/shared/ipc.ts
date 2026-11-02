@@ -67,6 +67,14 @@ export interface LeopardSettings {
   email: string
   /** Leopard's session cookie, encrypted on disk; shown to the screens only as "(signed in)". */
   cookie: string
+  /** Leopard projects already brought in as jobs, so a job deleted in BidMail is not imported again. */
+  importedProjects?: string[]
+}
+
+/** What one pass of importing Leopard projects as jobs did. */
+export interface LeopardSyncResult {
+  created: number
+  linked: number
 }
 
 export interface LeopardStatus {

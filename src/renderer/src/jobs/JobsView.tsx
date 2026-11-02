@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { JobStatus, JOB_STATUS_LABELS, TAKEOFF_STATUS_LABELS } from '../../../shared/types'
-import { bid } from '../api'
+import { bid, leopardApi } from '../api'
 import { useApp } from '../state'
 import { Icon } from '../components/Icon'
 import { Button, Empty } from '../components/ui'
@@ -12,6 +12,11 @@ export function JobsView() {
   const [filter, setFilter] = useState<JobStatus | 'all' | 'open'>('open')
   const [q, setQ] = useState('')
   const [creating, setCreating] = useState(false)
+
+  // New Leopard projects show up as jobs (the app also checks every few minutes); signed out or offline is fine.
+  useEffect(() => {
+    leopardApi.syncJobs().catch(() => {})
+  }, [])
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase()
