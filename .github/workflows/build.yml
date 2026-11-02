@@ -19,12 +19,18 @@ jobs:
         include:
           - os: macos-latest
             script: dist:mac
+            # latest-mac.yml / latest.yml and the .blockmap files are what installed copies update from.
             files: |
               release/*.dmg
               release/*.zip
+              release/latest-mac.yml
+              release/*.blockmap
           - os: windows-latest
             script: dist
-            files: release/*.exe
+            files: |
+              release/*.exe
+              release/latest.yml
+              release/*.blockmap
           - os: ubuntu-latest
             script: dist:arch
             files: |

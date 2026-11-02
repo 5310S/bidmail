@@ -12,7 +12,7 @@ import { appleMail } from './mail/appleMail'
 import { SnoozeService } from './mail/snooze'
 import { RulesRunner } from './mail/rulesRunner'
 import { startReminders } from './reminders'
-import { Updater } from './updater'
+import { RELEASES_FEED, Updater } from './updater'
 import { publishInstaller } from './updatesFeed'
 import { fetchCertificate } from './net'
 import { LeopardService } from './leopardService'
@@ -77,7 +77,7 @@ function syncLeopardJobs() {
 function configureUpdates() {
   const s = getSettings()
   if (!s.updates.enabled) return updater.configure('')
-  const feed = s.updates.url.trim() || (s.team.mode === 'remote' && s.team.url ? normalizeUrl(s.team.url) + '/updates' : '')
+  const feed = s.updates.url.trim() || (s.team.mode === 'remote' && s.team.url ? normalizeUrl(s.team.url) + '/updates' : '') || RELEASES_FEED
   updater.configure(feed, s.team.mode === 'remote' && feed.startsWith(normalizeUrl(s.team.url)) ? s.team.certPem || undefined : undefined)
 }
 

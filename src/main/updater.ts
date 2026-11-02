@@ -1,9 +1,15 @@
-// Automatic updates from the team server's /updates folder (or any web folder with latest.yml).
-// New versions download in the background; the app offers "Restart to update".
+// Automatic updates from BidMail's GitHub Releases (or the team server's /updates folder, or any web folder with
+// latest.yml). New versions download in the background; the app then offers "Relaunch to Update".
 import { app, session } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { X509Certificate } from 'node:crypto'
 export { publishInstaller } from './updatesFeed'
+
+/**
+ * The newest GitHub release: each tagged build uploads latest.yml (Windows) and latest-mac.yml next to the installers.
+ * Linux builds (tar.gz, Arch package) can't update themselves, so they have no default.
+ */
+export const RELEASES_FEED = process.platform === 'linux' ? '' : 'https://github.com/5310S/bidmail/releases/latest/download'
 
 export interface UpdateStatus {
   state: 'disabled' | 'idle' | 'checking' | 'downloading' | 'ready' | 'current' | 'error'
@@ -59,7 +65,8 @@ export class Updater {
     autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl.replace(/\/+$/, '') })
     this.set({ state: 'idle', feedUrl, error: undefined })
     this.check()
-    this.timer = setInterval(() => this.check(), 4 * 3600000)
+    // Every minute: a new release reaches everyone within a minute or two (a check is one small file download).
+    this.timer = setInterval(() => this.check(), 60_000)
   }
 
   check() {

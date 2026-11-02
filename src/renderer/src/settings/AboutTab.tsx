@@ -22,7 +22,7 @@ export function AboutTab() {
     idle: 'Waiting to check for updates.',
     checking: 'Checking for updates...',
     downloading: `Downloading version ${u?.version ?? ''}... ${u?.progress ?? 0}%`,
-    ready: `Version ${u?.version} is ready. Restart BidMail to finish updating.`,
+    ready: `Version ${u?.version} is downloaded. Relaunch BidMail to finish updating.`,
     current: 'BidMail is up to date.',
     error: `Couldn't check for updates: ${u?.error ?? ''}`
   }
@@ -48,7 +48,7 @@ export function AboutTab() {
         </div>
         <div className="form-actions" style={{ justifyContent: 'flex-start' }}>
           {u?.state === 'ready' ? (
-            <Button kind="primary" icon="refresh" onClick={() => updates.install()}>Restart to update</Button>
+            <Button kind="primary" icon="refresh" onClick={() => updates.install()}>Relaunch to Update</Button>
           ) : (
             <Button icon="refresh" disabled={!u || u.state === 'disabled' || u.state === 'checking' || u.state === 'downloading'} onClick={() => updates.check()}>Check now</Button>
           )}
@@ -57,13 +57,12 @@ export function AboutTab() {
           <input type="checkbox" checked={settings.updates.enabled} onChange={(e) => updateSettings({ updates: { ...settings.updates, enabled: e.target.checked } })} />
           Download new versions automatically
         </label>
-        <Field label="Update address" hint={team?.mode === 'remote' ? 'Leave blank to get updates from your team server.' : 'A web folder with latest.yml. Leave blank when connected to a team server.'}>
+        <Field label="Update address" hint={team?.mode === 'remote' ? 'Leave blank to get updates from your team server.' : "Leave blank to get updates from BidMail's GitHub Releases. Or a web folder with latest.yml."}>
           <div className="input-with-btn">
             <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={team?.mode === 'remote' ? `${settings.team.url}/updates` : 'https://'} />
             <Button onClick={() => updateSettings({ updates: { ...settings.updates, url: url.trim() } }).then(() => toast('Saved', 'success'))}>Save</Button>
           </div>
         </Field>
-        {isMac && <p className="muted small">On a Mac, automatic updates require an app signed with an Apple Developer ID. Until then, install new versions from the .dmg.</p>}
       </div>
 
       {team?.mode === 'host' && (

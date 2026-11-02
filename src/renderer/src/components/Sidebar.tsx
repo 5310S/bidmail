@@ -131,8 +131,8 @@ export function Sidebar() {
 
       <div className="side-foot">
         {update?.state === 'ready' && (
-          <button className="update-pill" onClick={() => invoke('update:install')} title="Restarts BidMail to finish updating">
-            <Icon name="download" size={15} /> <span className="ellipsis">Version {update.version} ready - restart</span>
+          <button className="update-pill" onClick={() => invoke('update:install')} title={`Version ${update.version} is downloaded. BidMail closes and opens again on the new version.`}>
+            <Icon name="refresh" size={15} /> <span className="ellipsis">Relaunch to Update</span>
           </button>
         )}
         <button

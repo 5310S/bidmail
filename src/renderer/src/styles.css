@@ -499,7 +499,7 @@ code { background: var(--gray-bg); padding: 1px 5px; border-radius: 4px; font-si
 @container (max-width: 640px) { .reader-toolbar .btn-sm span { display: none; } }
 
 .count.strong.warn { background: #e0861f; }
-.update-pill { display: flex; align-items: center; gap: 7px; margin: 0 14px 6px; padding: 6px 10px; width: calc(100% - 28px); border-radius: 14px; border: none; background: #2e9d6a; color: #fff; font-size: 12px; cursor: pointer; font-weight: 600; }
+.update-pill { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 0 14px 8px; padding: 8px 12px; width: calc(100% - 28px); border-radius: 8px; border: none; background: #2e9d6a; color: #fff; font-size: 13px; cursor: pointer; font-weight: 600; }
 
 /* today */
 .today-section { margin-bottom: 26px; }
