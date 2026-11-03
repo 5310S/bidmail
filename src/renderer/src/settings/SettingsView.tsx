@@ -285,6 +285,9 @@ function OAuthAccountEditor({ account, onClose }: { account: MailAccount; onClos
     if (viaMail) accountsApi.appleMailSignatures().then(setMailSigs).catch(() => setMailSigs([]))
   }, [viaMail])
   const mailSig = viaMail ? a.appleMailSignature ?? '' : ''
+  // Mail sends BidMail's typed signature as text, so a picture pasted into it never arrives.
+  const hasPicture = (html: string) => /<img\b/i.test(html)
+  const [typedPicture, setTypedPicture] = useState(viaMail && hasPicture(account.signature))
   const save = async () => {
     try {
       await accountsApi.save({ account: { ...a, signature: sig.current?.getHtml() ?? a.signature } })
@@ -310,7 +313,7 @@ function OAuthAccountEditor({ account, onClose }: { account: MailAccount; onClos
         <div className="form-grid" style={{ marginTop: 12 }}>
           <Field label="Signature from Mac Mail" wide hint="Mail adds it to each email you send from BidMail, pictures included. Set signatures up in Mail > Settings > Signatures.">
             <select value={mailSig} onChange={(e) => setA({ ...a, appleMailSignature: e.target.value })}>
-              <option value="">None: use the signature typed below</option>
+              <option value="">{mailSigs === null ? 'Loading signatures from Mail...' : 'None: use the signature typed below'}</option>
               {mailSig && mailSigs && !mailSigs.includes(mailSig) && <option value={mailSig}>{mailSig} (no longer in Mail)</option>}
               {(mailSigs ?? []).map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
@@ -320,7 +323,16 @@ function OAuthAccountEditor({ account, onClose }: { account: MailAccount; onClos
       {!mailSig && (
         <>
           <div className="field-label" style={{ marginTop: 14 }}>Signature{viaMail ? ' (added as plain text)' : ''}</div>
-          <RichEditor ref={sig} initialHtml={a.signature} minHeight={90} />
+          <RichEditor ref={sig} initialHtml={a.signature} minHeight={90} onChange={() => viaMail && setTypedPicture(hasPicture(sig.current?.getHtml() ?? ''))} />
+          {typedPicture && (
+            <div className="warn-box" style={{ marginTop: 8 }}>
+              <Icon name="alert" />
+              <span>
+                Pictures can't be sent from this box through Mac Mail.
+                {mailSigs?.length ? ` Choose your signature under "Signature from Mac Mail" above instead (${mailSigs.join(', ')}); Mail adds it with the picture.` : ' Set your signature up in Mail > Settings > Signatures, then choose it above.'}
+              </span>
+            </div>
+          )}
         </>
       )}
       <div className="field-label" style={{ marginTop: 14 }}>Color</div>
