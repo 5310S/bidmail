@@ -51,7 +51,6 @@ export function MailSignaturePreview({ account }: { account: MailAccount }) {
   const sig = useMailSignature(account)
   return (
     <div className="mail-sig" contentEditable={false}>
-      <div className="mail-sig-label">Signature from Mac Mail, added when sent</div>
       <MailSignatureBody account={account} sig={sig} />
     </div>
   )
