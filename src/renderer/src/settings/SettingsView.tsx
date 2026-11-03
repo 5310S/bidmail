@@ -280,6 +280,11 @@ function OAuthAccountEditor({ account, onClose }: { account: MailAccount; onClos
   const sig = useRef<RichEditorHandle>(null)
   const provider = account.oauthProvider ?? 'microsoft'
   const viaMail = account.authType === 'applemail'
+  const [mailSigs, setMailSigs] = useState<string[] | null>(null)
+  useEffect(() => {
+    if (viaMail) accountsApi.appleMailSignatures().then(setMailSigs).catch(() => setMailSigs([]))
+  }, [viaMail])
+  const mailSig = viaMail ? a.appleMailSignature ?? '' : ''
   const save = async () => {
     try {
       await accountsApi.save({ account: { ...a, signature: sig.current?.getHtml() ?? a.signature } })
@@ -294,15 +299,30 @@ function OAuthAccountEditor({ account, onClose }: { account: MailAccount; onClos
     <Modal title={`Edit ${account.email}`} onClose={onClose} width={680}
       footer={<>{!viaMail && <Button onClick={() => signIn(provider, account.id)} disabled={!!busy}>{busy ? 'Waiting for browser...' : 'Sign in again'}</Button>}<span className="grow" /><Button onClick={onClose}>Cancel</Button><Button kind="primary" onClick={save}>Save</Button></>}>
       {viaMail ? (
-        <div className="ok-box"><Icon name="check" /> Connected through Mac Mail ("{account.appleMailAccount}"). Mail does the signing in; keep it running. Emails sent from BidMail go out as plain text, and the signature below is added as text.</div>
+        <div className="ok-box"><Icon name="check" /> Connected through Mac Mail ("{account.appleMailAccount}"). Mail does the signing in; keep it running. Emails sent from BidMail go out as plain text, plus your Mail signature if you choose one below.</div>
       ) : (
         <div className="ok-box"><Icon name="check" /> Signed in with {provider === 'google' ? 'Google' : 'Microsoft'} as {account.email}. If mail stops working (for example after a password change), click "Sign in again".</div>
       )}
       <div className="form-grid" style={{ marginTop: 12 }}>
         <Field label="Your name (as recipients see it)" wide><input value={a.displayName} onChange={(e) => setA({ ...a, displayName: e.target.value })} /></Field>
       </div>
-      <div className="field-label" style={{ marginTop: 14 }}>Signature</div>
-      <RichEditor ref={sig} initialHtml={a.signature} minHeight={90} />
+      {viaMail && (
+        <div className="form-grid" style={{ marginTop: 12 }}>
+          <Field label="Signature from Mac Mail" wide hint="Mail adds it to each email you send from BidMail, pictures included. Set signatures up in Mail > Settings > Signatures.">
+            <select value={mailSig} onChange={(e) => setA({ ...a, appleMailSignature: e.target.value })}>
+              <option value="">None: use the signature typed below</option>
+              {mailSig && mailSigs && !mailSigs.includes(mailSig) && <option value={mailSig}>{mailSig} (no longer in Mail)</option>}
+              {(mailSigs ?? []).map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </Field>
+        </div>
+      )}
+      {!mailSig && (
+        <>
+          <div className="field-label" style={{ marginTop: 14 }}>Signature{viaMail ? ' (added as plain text)' : ''}</div>
+          <RichEditor ref={sig} initialHtml={a.signature} minHeight={90} />
+        </>
+      )}
       <div className="field-label" style={{ marginTop: 14 }}>Color</div>
       <div className="color-pick">
         {COLORS.map((c) => <button key={c} className={cx(a.color === c && 'on')} style={{ background: c }} onClick={() => setA({ ...a, color: c })} />)}

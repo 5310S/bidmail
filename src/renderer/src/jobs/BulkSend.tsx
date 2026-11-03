@@ -1,8 +1,8 @@
 // "Send Drawings": one personalized email per company, with the drawings & spec links merged in.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import DOMPurify from 'dompurify'
-import type { BulkProgress, ComposeAttachment } from '../../../shared/ipc'
-import { Bidder, bidderStage, BIDDER_STAGE_LABELS, fillTemplate, JobDetail, MERGE_FIELDS, Template } from '../../../shared/types'
+import { mailAddsSignature, type BulkProgress, type ComposeAttachment } from '../../../shared/ipc'
+import { Bidder, bidderStage, BIDDER_STAGE_LABELS, escapeHtml, fillTemplate, JobDetail, MERGE_FIELDS, Template } from '../../../shared/types'
 import { mergeFields, signOff } from '../../../shared/merge'
 import { bid, bulk, on, sys } from '../api'
 import { useApp, useBidQuery } from '../state'
@@ -78,7 +78,10 @@ export function BulkSend({ detail, mode, tradeId, addendumId, onClose }: { detai
   const preview = useMemo(() => {
     if (!previewTarget || tab !== 'preview') return null
     const f = mergeFields(detail.job, previewTarget.t, previewTarget.b, me, addendum)
-    const sig = signOff(accounts.find((a) => a.id === accountId)?.signature ?? '', me)
+    const acct = accounts.find((a) => a.id === accountId)
+    const sig = mailAddsSignature(acct)
+      ? `<p style="color:#888"><i>Your Mac Mail signature "${escapeHtml(acct!.appleMailSignature!)}" goes here.</i></p>`
+      : signOff(acct?.signature ?? '', me)
     return { subject: fillTemplate(subject, f, false), html: fillTemplate(currentBody(), f, true) + (sig ? '<br>' + sig : '') }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewTarget?.b.id, tab, subject, accountId])

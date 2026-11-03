@@ -168,8 +168,13 @@ export interface MailAccount {
   oauthProvider?: 'microsoft' | 'google'
   /** For 'applemail': the account's name in Mail (Mail > Settings > Accounts). */
   appleMailAccount?: string
+  /** For 'applemail': the Mail signature (by name) that Mail adds to each email sent, instead of `signature`. */
+  appleMailSignature?: string
   hasPassword?: boolean
 }
+
+/** Does Mac Mail add this account's signature itself (so BidMail adds none)? */
+export const mailAddsSignature = (a?: MailAccount | null): boolean => a?.authType === 'applemail' && !!a.appleMailSignature
 
 export interface AccountSaveInput {
   account: MailAccount

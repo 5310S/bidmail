@@ -1013,7 +1013,8 @@ export class MailService extends EventEmitter {
   }
 
   /**
-   * Hands the message to Mac Mail to send (as plain text: Mail cannot be given formatted mail to send).
+   * Hands the message to Mac Mail to send (as plain text: Mail cannot be given formatted mail to send). The account's
+   * Mail signature, when one is chosen, is added by Mail with its pictures, which makes the email formatted.
    * Mail files it in Sent itself. The Message-ID is Mail's own, so the returned one is only a placeholder.
    */
   private async sendViaAppleMail(account: MailAccount, data: ComposeData): Promise<{ messageId: string }> {
@@ -1030,6 +1031,7 @@ export class MailService extends EventEmitter {
         to: data.to,
         cc: data.cc,
         bcc: data.bcc,
+        signature: account.appleMailSignature ?? '',
         files
       })
     } catch (e: any) {

@@ -89,6 +89,12 @@ on run argv
   return my joinList(out, RS)
 end run`,
 
+  signatures: `
+on run argv
+  tell application "Mail" to set names to name of every signature
+  return my joinList(names, ASCII character 30)
+end run`,
+
   folders: `
 on run argv
   tell application "Mail" to set boxes to mailboxes of account (item 1 of argv)
@@ -208,7 +214,8 @@ on run argv
   return "ok"
 end run`,
 
-  // argv: sender, subject, body, to, cc, bcc (each "name US address" joined by RS), attachment paths...
+  // argv: sender, subject, body, to, cc, bcc (each "name US address" joined by RS), Mail signature name (or ""),
+  // attachment paths...
   send: `
 on run argv
   set US to ASCII character 31
@@ -219,9 +226,14 @@ on run argv
       my addRecipients(m, item 4 of argv, "to")
       my addRecipients(m, item 5 of argv, "cc")
       my addRecipients(m, item 6 of argv, "bcc")
-      if (count of argv) > 6 then
+      if (item 7 of argv) is not "" then
+        -- Mail's own signature, pictures and all; Mail turns the message into formatted mail to carry it.
+        set message signature of m to signature (item 7 of argv)
+        delay 1
+      end if
+      if (count of argv) > 7 then
         tell content of m
-          repeat with i from 7 to count of argv
+          repeat with i from 8 to count of argv
             make new attachment with properties {file name:(POSIX file (item i of argv)) as alias} at after last paragraph
           end repeat
         end tell
@@ -448,7 +460,13 @@ end run`
     await run('createFolder', [account, name])
   },
 
-  async send(o: { from: string; subject: string; text: string; to: string; cc: string; bcc: string; files: string[] }) {
-    await run('send', [o.from, o.subject, o.text, packRecipients(o.to), packRecipients(o.cc), packRecipients(o.bcc), ...o.files])
+  /** The names of the signatures set up in Mail (Mail > Settings > Signatures). */
+  async signatures(): Promise<string[]> {
+    const out = await run('signatures', [])
+    return out ? out.split(RS) : []
+  },
+
+  async send(o: { from: string; subject: string; text: string; to: string; cc: string; bcc: string; signature: string; files: string[] }) {
+    await run('send', [o.from, o.subject, o.text, packRecipients(o.to), packRecipients(o.cc), packRecipients(o.bcc), o.signature, ...o.files])
   }
 }

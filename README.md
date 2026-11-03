@@ -22,8 +22,8 @@ BidMail to Applications. It is not notarized by Apple yet: the first time, **rig
      Outlook.com and Microsoft 365 no longer accept passwords from email apps, so Outlook accounts must use this.
    - **Use an account from Mac Mail** (Mac only): any account already working in the Mail app, such as a work
      Microsoft 365 mailbox when Sign in with Microsoft is not set up. BidMail reads and sends through Mail (keep it
-     running; macOS asks once to let BidMail control Mail). Mail sends BidMail's emails as plain text, and drafts and
-     meeting replies stay in Mail.
+     running; macOS asks once to let BidMail control Mail). Mail sends BidMail's emails as plain text, plus the Mail
+     signature you pick for the account (pictures included); drafts and meeting replies stay in Mail.
    - **Other email (password)**: company mail servers, Yahoo, iCloud, or Gmail with an *app password*.
 3. **Companies**: add your subs or **Import CSV** (columns like Company, Contact, Email, Phone, Trade, GL Expires,
    WC Expires, Bonding Limit, Union, Certifications, License, Prequalified).

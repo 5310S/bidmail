@@ -257,6 +257,7 @@ function registerIpc() {
   })
   /** Mac only: the accounts set up in the Mail app, which BidMail can read and send through. */
   handle('accounts:appleMailList', () => (appleMail.available() ? appleMail.accounts() : []))
+  handle('accounts:appleMailSignatures', () => (appleMail.available() ? appleMail.signatures() : []))
   handle('accounts:appleMail', async (name: string) => {
     const info = (await appleMail.accounts()).find((a) => a.name === name)
     if (!info) throw new Error(`Mail has no account named "${name}". Check Mail > Settings > Accounts.`)
@@ -273,7 +274,8 @@ function registerIpc() {
       saveSentCopy: false,
       allowInvalidCerts: false,
       authType: 'applemail',
-      appleMailAccount: name
+      appleMailAccount: name,
+      appleMailSignature: existing?.appleMailSignature ?? ''
     }
     await mail.testAccount(account, {})
     const saved = saveAccount({ account })

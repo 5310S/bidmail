@@ -189,7 +189,8 @@ export const accounts = {
   test: (account: MailAccount, password?: string) => invoke<string>('accounts:test', account, password),
   oauth: (provider: 'microsoft' | 'google', existingId?: string) => invoke<MailAccount>('accounts:oauth', provider, existingId),
   appleMailList: () => invoke<{ name: string; email: string; fullName: string; type: string }[]>('accounts:appleMailList'),
-  addAppleMail: (name: string) => invoke<MailAccount>('accounts:appleMail', name)
+  addAppleMail: (name: string) => invoke<MailAccount>('accounts:appleMail', name),
+  appleMailSignatures: () => invoke<string[]>('accounts:appleMailSignatures')
 }
 
 export const settingsApi = {

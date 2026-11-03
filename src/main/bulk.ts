@@ -1,7 +1,7 @@
 // Sends one personalized email per company (bid invitations / follow-ups) and records the
 // status checkpoint with date & time on each company as it goes.
 import { randomUUID } from 'node:crypto'
-import { BulkProgress, BulkSendInput } from '../shared/ipc'
+import { BulkProgress, BulkSendInput, mailAddsSignature } from '../shared/ipc'
 import { fillTemplate, JobDetail } from '../shared/types'
 import { mergeFields, signOff } from '../shared/merge'
 import { MailService } from './mail/service'
@@ -31,11 +31,12 @@ export class BulkSender {
     const acct = getAccount(input.accountId)
     if (!acct) throw new Error('Choose an email account to send from.')
     if (input.markAs === 'addendum' && !detail.addenda.some((a) => a.id === input.addendumId)) throw new Error('Addendum not found')
-    this.run(runId, input, detail, acct.account.signature).catch(() => {})
+    // Mac Mail adds its own signature; adding BidMail's sign-off too would sign twice.
+    this.run(runId, input, detail, mailAddsSignature(acct.account) ? null : acct.account.signature).catch(() => {})
     return runId
   }
 
-  private async run(runId: string, input: BulkSendInput, detail: JobDetail, signature: string) {
+  private async run(runId: string, input: BulkSendInput, detail: JobDetail, signature: string | null) {
     const settings = getSettings()
     const me = { name: settings.userName, company: settings.companyName }
     const lookup = new Map(detail.trades.flatMap((t) => t.bidders.map((b) => [b.id, { trade: t, bidder: b }] as const)))
@@ -61,7 +62,7 @@ export class BulkSender {
       try {
         const fields = mergeFields(detail.job, trade, bidder, me, addendum)
         const subject = fillTemplate(input.subject, fields, false)
-        const sig = signOff(signature, me)
+        const sig = signature === null ? '' : signOff(signature, me)
         const body = fillTemplate(input.body, fields, true) + (sig ? `<br>${sig}` : '')
         await this.mail.send({
           accountId: input.accountId,

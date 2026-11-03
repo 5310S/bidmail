@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ComposeAttachment, ComposeData } from '../../../shared/ipc'
+import { mailAddsSignature, type ComposeAttachment, type ComposeData, type MailAccount } from '../../../shared/ipc'
 import { fillTemplate, Template } from '../../../shared/types'
 import { mergeFields } from '../../../shared/merge'
 import { bid, mail, pathForFile, sys } from '../api'
@@ -11,6 +11,9 @@ import { AddressInput, Contact } from './AddressInput'
 import { RichEditor, RichEditorHandle } from './RichEditor'
 
 const SIG_START = '<div class="bm-sig">'
+
+/** The signature BidMail puts in the body: none when Mac Mail adds the account's signature as it sends. */
+const bodySignature = (a?: MailAccount) => (mailAddsSignature(a) ? '' : a?.signature ?? '')
 
 function withSignature(html: string, sig: string) {
   const cleaned = html.replace(/<div class="bm-sig">[\s\S]*?<\/div><!--\/sig-->/, '')
@@ -42,7 +45,7 @@ export function Composer() {
 
   const initialHtml = useMemo(() => {
     const base = init?.html ?? '<p><br></p>'
-    return init?.draft ? base : withSignature(base, account?.signature ?? '')
+    return init?.draft ? base : withSignature(base, bodySignature(account))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -67,7 +70,7 @@ export function Composer() {
 
   const changeAccount = (id: string) => {
     setAccountId(id)
-    const sig = accounts.find((a) => a.id === id)?.signature ?? ''
+    const sig = bodySignature(accounts.find((a) => a.id === id))
     const html = editor.current?.getHtml() ?? ''
     editor.current?.setHtml(withSignature(html, sig))
   }
@@ -267,7 +270,9 @@ export function Composer() {
           />
           <span className="grow" />
           {account?.authType === 'applemail' ? (
-            <span className="muted small">Sent through Mac Mail as plain text</span>
+            <span className="muted small">
+              {mailAddsSignature(account) ? `Sent through Mac Mail, with your "${account?.appleMailSignature}" signature` : 'Sent through Mac Mail as plain text'}
+            </span>
           ) : (
             <span className="muted small">{modKey}+Enter to send</span>
           )}
