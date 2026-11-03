@@ -1,7 +1,7 @@
 {
   "name": "bidmail",
   "productName": "BidMail",
-  "version": "1.4.7",
+  "version": "1.4.8",
   "description": "Email client and bid-invitation tracker for construction estimators",
   "main": "out/main/index.js",
   "author": "BidMail",
@@ -22,8 +22,11 @@
     "dist:arch": "electron-vite build && electron-builder --linux dir --x64 && node scripts/package-arch.mjs"
   },
   "dependencies": {
+    "dom-serializer": "^2.0.0",
+    "domhandler": "^5.0.3",
     "dompurify": "^3.4.17",
     "electron-updater": "^6.8.11",
+    "htmlparser2": "^10.1.0",
     "imapflow": "^2.9.1",
     "mailparser": "^3.13.0",
     "nodemailer": "^10.3.0",

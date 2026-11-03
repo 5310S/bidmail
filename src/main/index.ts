@@ -8,6 +8,7 @@ import { deleteAccount, getAccount, listAccounts, saveAccount } from './mail/acc
 import { getSettings, publicSettings, saveSettings } from './settings'
 import { htmlToPdf, printHtml } from './print'
 import { providerFor, signIn, OAuthProviderId } from './mail/oauth'
+import { mailSignatureHtml } from './mailSignature'
 import { appleMail } from './mail/appleMail'
 import { SnoozeService } from './mail/snooze'
 import { RulesRunner } from './mail/rulesRunner'
@@ -258,6 +259,8 @@ function registerIpc() {
   /** Mac only: the accounts set up in the Mail app, which BidMail can read and send through. */
   handle('accounts:appleMailList', () => (appleMail.available() ? appleMail.accounts() : []))
   handle('accounts:appleMailSignatures', () => (appleMail.available() ? appleMail.signatures() : []))
+  /** The account's Mac Mail signature as HTML, to show while composing. `account` may be unsaved (Settings). */
+  handle('accounts:mailSignatureHtml', (account: MailAccount, refresh?: boolean) => mailSignatureHtml(account, refresh))
   handle('accounts:appleMail', async (name: string) => {
     const info = (await appleMail.accounts()).find((a) => a.name === name)
     if (!info) throw new Error(`Mail has no account named "${name}". Check Mail > Settings > Accounts.`)

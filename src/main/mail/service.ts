@@ -121,7 +121,7 @@ function validIso(d: Date | string | undefined) {
   return isNaN(v.getTime()) ? new Date().toISOString() : v.toISOString()
 }
 
-function formatAddress(a: Address) {
+export function formatAddress(a: Address) {
   return a.name ? `"${a.name.replace(/"/g, '')}" <${a.address}>` : a.address
 }
 

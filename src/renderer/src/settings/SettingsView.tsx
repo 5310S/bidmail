@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { MailAccount, OAuthSettings } from '../../../shared/ipc'
 import { BUILT_IN_OAUTH } from '../../../shared/oauthBuiltIn'
 import { accounts as accountsApi } from '../api'
+import { MailSignatureBody, useMailSignature } from '../mail/MailSignature'
 import { TeamTab } from './TeamTab'
 import { AboutTab } from './AboutTab'
 import { RulesTab } from './RulesTab'
@@ -273,6 +274,24 @@ function ChooseMethod({ onPassword, onAppleMail, onClose }: { onPassword: () => 
   )
 }
 
+/** What the chosen Mail signature looks like, with a way to fetch it again after changing it in Mail. */
+function MailSigCheck({ account }: { account: MailAccount }) {
+  const sig = useMailSignature(account)
+  return (
+    <div style={{ gridColumn: '1 / -1' }}>
+      <div className="mail-sig-box">
+        <div className="mail-sig">
+          <MailSignatureBody account={account} sig={sig} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', marginTop: 6, gap: 8, alignItems: 'center' }}>
+        <span className="muted small grow">Changed it in Mail? Send an email with it, then Refresh to see the new version here.</span>
+        <Button small icon="refresh" disabled={sig.loading} onClick={sig.refresh}>Refresh</Button>
+      </div>
+    </div>
+  )
+}
+
 function OAuthAccountEditor({ account, onClose }: { account: MailAccount; onClose: () => void }) {
   const { reloadAccounts, toast } = useApp()
   const { busy, signIn } = useOAuthSignIn(onClose)
@@ -318,6 +337,7 @@ function OAuthAccountEditor({ account, onClose }: { account: MailAccount; onClos
               {(mailSigs ?? []).map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </Field>
+          {mailSig && <MailSigCheck account={a} />}
         </div>
       )}
       {!mailSig && (

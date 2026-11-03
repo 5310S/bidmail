@@ -1,6 +1,6 @@
 // Typed wrappers over the preload bridge.
 import type {
-  AccountSaveInput, AppSettings, BulkSendInput, ComposeData, MailAccount, MailFolder, MessageDetail, MessageList,
+  AccountSaveInput, AppSettings, BulkSendInput, ComposeData, MailAccount, MailFolder, MailSignature, MessageDetail, MessageList,
   LeopardCheck, LeopardProjectInfo, LeopardStatus, LeopardSyncResult, PickedFile, TakeoffAnalysisResult, TeamSettings, TeamStatus
 } from '../../shared/ipc'
 import type {
@@ -190,7 +190,8 @@ export const accounts = {
   oauth: (provider: 'microsoft' | 'google', existingId?: string) => invoke<MailAccount>('accounts:oauth', provider, existingId),
   appleMailList: () => invoke<{ name: string; email: string; fullName: string; type: string }[]>('accounts:appleMailList'),
   addAppleMail: (name: string) => invoke<MailAccount>('accounts:appleMail', name),
-  appleMailSignatures: () => invoke<string[]>('accounts:appleMailSignatures')
+  appleMailSignatures: () => invoke<string[]>('accounts:appleMailSignatures'),
+  mailSignatureHtml: (account: MailAccount, refresh = false) => invoke<MailSignature>('accounts:mailSignatureHtml', account, refresh)
 }
 
 export const settingsApi = {

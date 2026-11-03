@@ -9,6 +9,7 @@ import { useApp, useBidQuery } from '../state'
 import { Icon } from '../components/Icon'
 import { Button, Field, Menu, Modal } from '../components/ui'
 import { cx, fmtDateTime, fmtSize } from '../util'
+import { useMailSignature } from '../mail/MailSignature'
 import { RichEditor, RichEditorHandle } from '../mail/RichEditor'
 
 type Mode = 'invite' | 'followup' | 'addendum'
@@ -73,6 +74,7 @@ export function BulkSend({ detail, mode, tradeId, addendumId, onClose }: { detai
   }
 
   const me = { name: settings.userName, company: settings.companyName }
+  const mailSig = useMailSignature(accounts.find((a) => a.id === accountId))
   const previewTarget = all.find((x) => x.b.id === previewId) ?? all.find((x) => sel.has(x.b.id)) ?? all[0]
   const currentBody = () => editor.current?.getHtml() ?? bodyHtml
   const preview = useMemo(() => {
@@ -80,11 +82,11 @@ export function BulkSend({ detail, mode, tradeId, addendumId, onClose }: { detai
     const f = mergeFields(detail.job, previewTarget.t, previewTarget.b, me, addendum)
     const acct = accounts.find((a) => a.id === accountId)
     const sig = mailAddsSignature(acct)
-      ? `<p style="color:#888"><i>Your Mac Mail signature "${escapeHtml(acct!.appleMailSignature!)}" goes here.</i></p>`
+      ? mailSig.html || `<p style="color:#888"><i>Your Mac Mail signature "${escapeHtml(acct!.appleMailSignature!)}" goes here.</i></p>`
       : signOff(acct?.signature ?? '', me)
     return { subject: fillTemplate(subject, f, false), html: fillTemplate(currentBody(), f, true) + (sig ? '<br>' + sig : '') }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewTarget?.b.id, tab, subject, accountId])
+  }, [previewTarget?.b.id, tab, subject, accountId, mailSig.html])
 
   const warnings: string[] = []
   const bodyNow = bodyHtml + subject

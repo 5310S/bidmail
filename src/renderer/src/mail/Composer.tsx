@@ -9,6 +9,7 @@ import { Button, Menu } from '../components/ui'
 import { fmtSize, modKey } from '../util'
 import { AddressInput, Contact } from './AddressInput'
 import { RichEditor, RichEditorHandle } from './RichEditor'
+import { MailSignaturePreview } from './MailSignature'
 
 const SIG_START = '<div class="bm-sig">'
 
@@ -239,7 +240,13 @@ export function Composer() {
           </div>
         </div>
         <div className="composer-editor">
-          <RichEditor ref={editor} initialHtml={initialHtml} onChange={() => setDirty(true)} minHeight={300} />
+          <RichEditor
+            ref={editor}
+            initialHtml={initialHtml}
+            onChange={() => setDirty(true)}
+            minHeight={mailAddsSignature(account) ? 140 : 300}
+            footer={mailAddsSignature(account) && account ? <MailSignaturePreview account={account} /> : undefined}
+          />
         </div>
         {attachments.length > 0 && (
           <div className="composer-atts">

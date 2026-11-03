@@ -4,6 +4,10 @@
 // Message "UIDs" are Mail's own message ids. Every value reaches the scripts as an argument, never as script text.
 import { execFile } from 'node:child_process'
 import addressparser from 'nodemailer/lib/addressparser'
+import { simpleParser } from 'mailparser'
+import { parseDocument, DomUtils } from 'htmlparser2'
+import { isTag, type ChildNode } from 'domhandler'
+import render from 'dom-serializer'
 import { Address, MailFolder, MessageSummary } from '../../shared/ipc'
 
 const US = '\x1f' // field separator in script output
@@ -93,6 +97,40 @@ end run`,
 on run argv
   tell application "Mail" to set names to name of every signature
   return my joinList(names, ASCII character 30)
+end run`,
+
+  // argv: account, signature name. The signature's text, then the source of up to 3 of the account's newest sent
+  // emails that contain it (Mail shares a signature's pictures only by putting them in an email).
+  signatureSent: `
+on run argv
+  set RS to ASCII character 30
+  set out to {}
+  tell application "Mail"
+    set sigText to content of signature (item 2 of argv)
+    set end of out to sigText
+    set probe to ""
+    repeat with p in paragraphs of sigText
+      if length of (p as text) > 3 then
+        set probe to p as text
+        exit repeat
+      end if
+    end repeat
+    if probe is not "" then
+      repeat with mb in (mailboxes of account (item 1 of argv))
+        if {name of mb} is in {"Sent Items", "Sent Messages", "Sent", "Sent Mail"} then
+          set n to count of messages of mb
+          if n > 25 then set n to 25
+          repeat with i from 1 to n
+            set x to message i of mb
+            if (content of x) contains probe then set end of out to source of x
+            if (count of out) > 3 then exit repeat
+          end repeat
+        end if
+      end repeat
+    end if
+  end tell
+  set AppleScript's text item delimiters to RS
+  return out as text
 end run`,
 
   folders: `
@@ -278,6 +316,38 @@ type ScriptName = keyof typeof SCRIPTS
 
 let queue: Promise<unknown> = Promise.resolve()
 
+const squash = (t: string) => t.replace(/[\s\u00a0]+/g, '')
+const textOf = (nodes: ChildNode[]) => squash(nodes.map((n) => DomUtils.textContent(n)).join(''))
+
+/**
+ * The signature in an email Mail sent: Mail's own marker when it is still there, otherwise the nodes at the end of
+ * the email that hold the signature's text (Exchange strips the marker from sent copies). Pictures come back as
+ * data: URLs. '' when the email doesn't end with this signature.
+ */
+export async function signatureFromSource(source: string, sigText: string): Promise<string> {
+  const parsed = await simpleParser(source) // turns cid: pictures into data: URLs
+  const doc = parseDocument(parsed.html || '')
+  const marked = DomUtils.findOne((e) => e.attribs.id === 'AppleMailSignature', doc.children)
+  if (marked) return render(marked)
+  const want = squash(sigText)
+  if (!want) return ''
+  const body = DomUtils.findOne((e) => e.name === 'body', doc.children)
+  let nodes: ChildNode[] = body ? body.children : doc.children
+  for (;;) {
+    // From the end, take nodes until they hold the whole signature.
+    let i = nodes.length
+    while (i > 0 && !textOf(nodes.slice(i - 1)).includes(want)) i--
+    if (i === 0) return ''
+    const found = nodes.slice(i - 1)
+    // One node holding more than the signature (a wrapper around the whole email): look inside it.
+    if (found.length === 1 && textOf(found) !== want && isTag(found[0]) && found[0].children.length) {
+      nodes = found[0].children
+      continue
+    }
+    return render(found)
+  }
+}
+
 /** Runs one script (one at a time: Mail answers requests in order anyway). */
 function run(name: ScriptName, args: string[]): Promise<string> {
   return runScript(SCRIPTS[name], args)
@@ -458,6 +528,12 @@ end run`
 
   async createFolder(account: string, name: string) {
     await run('createFolder', [account, name])
+  },
+
+  /** A Mail signature's text, and the source of recent sent emails that carry it (newest first). */
+  async signatureSent(account: string, name: string): Promise<{ text: string; sources: string[] }> {
+    const [text = '', ...sources] = (await run('signatureSent', [account, name])).split(RS)
+    return { text, sources }
   },
 
   /** The names of the signatures set up in Mail (Mail > Settings > Signatures). */

@@ -237,6 +237,15 @@ code { background: var(--gray-bg); padding: 1px 5px; border-radius: 4px; font-si
 .composer-editor .rte { border: none; border-radius: 0; flex: 1; display: flex; flex-direction: column; overflow: visible; }
 .composer-editor .rte-toolbar { position: sticky; top: 0; z-index: 2; }
 .composer-editor .rte-body { flex: 1; padding: 16px 20px; }
+.composer-editor .rte-body:has(+ .mail-sig) { flex: 0 0 auto; }
+.composer-editor .mail-sig { padding: 0 20px 20px; }
+.mail-sig { padding: 4px 14px 12px; user-select: none; }
+.mail-sig-label { font-size: 11px; color: var(--muted); border-top: 1px dashed var(--border-strong); padding-top: 6px; margin-bottom: 8px; }
+.mail-sig-body { overflow-wrap: anywhere; }
+.mail-sig-body img { max-width: 100%; height: auto; }
+.mail-sig-box { border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; padding-top: 8px; }
+/* Mail signatures are written for a white page. */
+[data-theme='dark'] .mail-sig-body { background: #fff; color: #000; border-radius: 6px; padding: 8px 10px; }
 .composer-atts { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 18px; border-top: 1px solid var(--border); align-items: center; }
 .att-pill { display: inline-flex; align-items: center; gap: 5px; background: var(--gray-bg); border-radius: 14px; padding: 3px 6px 3px 10px; font-size: 12.5px; }
 .att-pill button { border: none; background: none; cursor: pointer; display: grid; place-items: center; padding: 2px; border-radius: 50%; color: var(--muted); }

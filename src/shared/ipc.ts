@@ -173,6 +173,12 @@ export interface MailAccount {
   hasPassword?: boolean
 }
 
+/** A Mac Mail signature to show. `exact` false: only its text (with no sent email yet to take its pictures from). */
+export interface MailSignature {
+  html: string
+  exact: boolean
+}
+
 /** Does Mac Mail add this account's signature itself (so BidMail adds none)? */
 export const mailAddsSignature = (a?: MailAccount | null): boolean => a?.authType === 'applemail' && !!a.appleMailSignature
 

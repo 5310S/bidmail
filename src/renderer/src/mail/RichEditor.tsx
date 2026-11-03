@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, ReactNode, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { modKey } from '../util'
 
@@ -13,8 +13,9 @@ export interface RichEditorHandle {
 const exec = (cmd: string, value?: string) => document.execCommand(cmd, false, value)
 
 /** Lightweight rich-text editor (contenteditable) with the formatting estimators actually use. */
-export const RichEditor = forwardRef<RichEditorHandle, { initialHtml: string; onChange?: () => void; minHeight?: number; placeholder?: string }>(
-  function RichEditor({ initialHtml, onChange, minHeight = 260, placeholder }, ref) {
+/** `footer` shows under the text, outside what is edited (and what getHtml returns). */
+export const RichEditor = forwardRef<RichEditorHandle, { initialHtml: string; onChange?: () => void; minHeight?: number; placeholder?: string; footer?: ReactNode }>(
+  function RichEditor({ initialHtml, onChange, minHeight = 260, placeholder, footer }, ref) {
     const el = useRef<HTMLDivElement>(null)
     const savedRange = useRef<Range | null>(null)
     const [linkOpen, setLinkOpen] = useState(false)
@@ -157,6 +158,7 @@ export const RichEditor = forwardRef<RichEditorHandle, { initialHtml: string; on
           onKeyUp={saveSelection}
           onMouseUp={saveSelection}
         />
+        {footer}
       </div>
     )
   }
